@@ -1,0 +1,477 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Class Song Maker</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&display=swap">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+<style>
+/* Layout: a labelled note grid fills the screen (melody on top, four drum rows below),
+   with a control dock along the bottom. Single theme on purpose: it is a classroom whiteboard. */
+:root {
+  --paper: #ffffff;
+  --cell-alt: #f3f4f7;
+  --line: #dfe6ee;
+  --line-strong: #b9c7d6;
+  --ink: #26303b;
+  --ink-soft: #66727f;
+  --drum: #16a8f0;
+  --melody: #7c4dff;
+  --panel: #ffffff;
+  --edge: #e1e5ea;
+  --hover: #f1f4f7;
+  --focus: #3d7be0;
+  --font-display: "Fredoka", "Baloo 2", "Comic Sans MS", system-ui, sans-serif;
+  --font-body: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  color-scheme: light;
+}
+html, body { height: 100%; }
+[hidden] { display: none !important; }
+body { margin: 0; background: var(--paper); color: var(--ink); font-family: var(--font-body); overflow: hidden; overscroll-behavior: none; -webkit-user-select: none; user-select: none; }
+header.top { position: fixed; top: 0; left: 0; right: 0; height: calc(52px + env(safe-area-inset-top, 0px)); padding-top: env(safe-area-inset-top, 0px); padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); display: flex; align-items: center; justify-content: center; border-bottom: 1px solid var(--edge); box-sizing: border-box; }
+header.top h1 { margin: 0; font-family: var(--font-display); font-weight: 600; font-size: 20px; letter-spacing: .04em; }
+#stage { position: fixed; left: 0; right: 0; top: calc(52px + env(safe-area-inset-top, 0px)); bottom: calc(86px + env(safe-area-inset-bottom, 0px)); touch-action: none; }
+#stage canvas { display: block; width: 100%; height: 100%; }
+.dock { position: fixed; left: 0; right: 0; bottom: 0; height: calc(86px + env(safe-area-inset-bottom, 0px)); padding-bottom: env(safe-area-inset-bottom, 0px); padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); box-sizing: border-box; border-top: 1px solid var(--edge); background: var(--panel); display: flex; align-items: center; gap: 10px; overflow-x: auto; }
+.dock .group { display: flex; align-items: center; gap: 6px; flex: none; }
+.dock .grow { flex: 1; }
+.dock button { font-family: var(--font-display); font-weight: 600; font-size: 15px; color: var(--ink); border: 1px solid var(--edge); background: #fff; border-radius: 999px; min-width: 46px; height: 46px; padding: 0 14px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; cursor: pointer; touch-action: manipulation; flex: none; }
+.dock button:hover { background: var(--hover); }
+.dock .play { width: 60px; height: 60px; min-width: 60px; padding: 0; border: 0; background: var(--drum); color: #fff; }
+.dock .play:hover { background: #0f94d6; }
+.dock svg { width: 22px; height: 22px; fill: currentColor; flex: none; }
+.dock .play svg { width: 30px; height: 30px; }
+.dock .tempo { display: flex; align-items: center; gap: 8px; font-family: var(--font-display); font-weight: 600; font-size: 15px; color: var(--ink-soft); }
+.dock .tempo input { width: 120px; accent-color: var(--drum); }
+.dock .tempo span { font-variant-numeric: tabular-nums; color: var(--drum); min-width: 3ch; }
+.dock .small { display: block; font-size: 11px; color: var(--ink-soft); font-family: var(--font-body); font-weight: 400; line-height: 1; }
+.dock .stack { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; line-height: 1.1; }
+button:focus-visible, select:focus-visible, input:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+
+.modal-back { position: fixed; inset: 0; z-index: 20; background: rgba(38,48,59,.35); display: flex; align-items: center; justify-content: center; padding-block: 16px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.modal { background: #fff; border-radius: 20px; padding: 22px; max-width: 520px; width: 100%; max-height: 100%; overflow-y: auto; box-shadow: 0 12px 40px rgba(0,0,0,.2); }
+.modal h2 { margin: 0 0 14px; font-family: var(--font-display); font-size: 24px; font-weight: 600; }
+.modal h3 { font-family: var(--font-display); font-weight: 600; font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: var(--ink-soft); margin: 18px 0 6px; }
+.modal p { margin: 0 0 14px; color: var(--ink-soft); line-height: 1.5; }
+.field { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 12px; padding: 8px 0; border-bottom: 1px solid #f0f2f5; }
+.field label { font-size: 15px; min-width: 0; }
+.field select, .field input[type=text] { font: inherit; font-size: 15px; padding: 7px 9px; border-radius: 8px; border: 1px solid var(--edge); background: #fff; color: var(--ink); max-width: 180px; }
+.modal .row { display: flex; gap: 12px; justify-content: flex-end; flex-wrap: wrap; margin-top: 16px; }
+.modal .row button { font-family: var(--font-display); font-weight: 600; font-size: 17px; border-radius: 14px; padding: 11px 22px; border: 2px solid var(--ink); background: #fff; color: var(--ink); cursor: pointer; }
+.modal .row button.primary { background: var(--ink); color: #fff; }
+.toast { position: fixed; z-index: 25; left: 50%; transform: translateX(-50%); top: calc(64px + env(safe-area-inset-top, 0px)); font-family: var(--font-display); font-weight: 600; font-size: 16px; background: var(--ink); color: #fff; padding: 8px 16px; border-radius: 999px; pointer-events: none; opacity: 0; transition: opacity .25s; max-width: calc(100% - 32px); text-align: center; }
+.toast.show { opacity: 1; }
+@media (max-width: 760px) { .dock .label, .dock .small { display: none; } .dock .tempo input { width: 80px; } .dock button { padding: 0 10px; } }
+@media (prefers-reduced-motion: reduce) { .toast { transition: none; } }
+</style>
+
+<header class="top"><h1>CLASS SONG MAKER</h1></header>
+<div id="stage"><canvas id="canvas"></canvas></div>
+
+<div class="dock" role="toolbar" aria-label="Controls">
+  <button class="play" id="btn-play" aria-label="Play" title="Play (Space)"><svg viewBox="0 0 24 24" id="play-icon"><path d="M8 5v14l11-7z"/></svg></button>
+  <div class="group"><button id="btn-melody" title="Change the melody sound"><span class="stack"><span id="melody-name">Wooden xylophone</span><span class="small">Melody sound</span></span></button></div>
+  <div class="group"><button id="btn-kit" title="Change the drum sounds"><span class="stack"><span id="kit-name">Electronic</span><span class="small">Drum sounds</span></span></button></div>
+  <div class="tempo"><label for="tempo">Tempo</label><input type="range" id="tempo" min="50" max="200" step="1"><span id="tempo-val">120</span></div>
+  <div class="grow"></div>
+  <div class="group">
+    <button id="btn-undo" title="Undo (Ctrl+Z)"><svg viewBox="0 0 24 24"><path d="M12.5 8c-2.65 0-5.05 1-6.9 2.6L2 7v9h9l-3.62-3.62A7.95 7.95 0 0 1 20.48 16l2.37-.78A10.5 10.5 0 0 0 12.5 8z"/></svg><span class="label">Undo</span></button>
+    <button id="btn-settings" title="Settings"><svg viewBox="0 0 24 24"><path d="M19.4 13a7.6 7.6 0 0 0 0-2l2.1-1.6-2-3.5-2.5 1a7.4 7.4 0 0 0-1.7-1L14.9 3h-4l-.4 2.9a7.4 7.4 0 0 0-1.7 1l-2.5-1-2 3.5L6.4 11a7.6 7.6 0 0 0 0 2l-2.1 1.6 2 3.5 2.5-1a7.4 7.4 0 0 0 1.7 1l.4 2.9h4l.4-2.9a7.4 7.4 0 0 0 1.7-1l2.5 1 2-3.5L19.4 13zM12.9 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z"/></svg><span class="label">Settings</span></button>
+    <button id="btn-clear" title="Clear the song"><span>Clear</span></button>
+    <button id="btn-full" title="Full screen (F)" aria-label="Full screen"><svg viewBox="0 0 24 24" id="full-icon"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg></button>
+  </div>
+</div>
+
+<div class="modal-back" id="settings" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+    <h2 id="settings-title">Settings</h2>
+    <div id="settings-body"></div>
+    <div class="row"><button class="primary" id="settings-done">Done</button></div>
+  </div>
+</div>
+<div class="modal-back" id="confirm" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="confirm-title">
+    <h2 id="confirm-title">Clear the whole song?</h2>
+    <p>All the notes and drums go away. You can still press Undo afterwards.</p>
+    <div class="row"><button id="confirm-no">Keep it</button><button class="primary" id="confirm-yes">Clear</button></div>
+  </div>
+</div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+/* =====================================================================
+   CLASS SONG MAKER: a grid song maker for a classroom, built to be extended.
+   Melody rows on top (one colour per note), four labelled drum rows below.
+   Places to edit: MELODY_SOUNDS, DRUM_KITS, DRUM_ROWS, SCALES, START_SONG.
+   ===================================================================== */
+const INSTRUMENTS = {};
+function def(id, label, family, make) { INSTRUMENTS[id] = { label, family, make }; }
+let BUS = null;                                                    // every instrument plays into this
+const poly = (Voice, opts, vol) => { const s = new Tone.PolySynth(Voice, opts); s.maxPolyphony = 32; s.volume.value = vol; s.connect(BUS); return s; };
+const pool = (n, make) => { const v = Array.from({ length: n }, make); let i = 0; return () => v[i++ % n]; };
+const tr = (n, semis) => Tone.Frequency(n).transpose(semis).toNote();
+const hz = (n, semis = 0) => Tone.Frequency(n).transpose(semis).toFrequency();
+const hold = (d, min = .12) => Math.max(min, d);
+function sweeper(n, opts, vol, chain) {                          // mono voices whose pitch we can bend
+  return pool(n, () => { const s = new Tone.Synth(opts); s.volume.value = vol; if (chain) s.chain(...chain(), BUS); else s.connect(BUS); return s; });
+}
+function bend(s, t, pts, v, d) {                                 // pts: [[secondsAfterStart, Hz], ...]
+  s.triggerAttackRelease(pts[0][1], d, t, v);
+  for (let i = 1; i < pts.length; i++) s.frequency.exponentialRampToValueAtTime(pts[i][1], t + pts[i][0]);
+}
+
+// Keys
+def("piano", "Piano", "Pianos", () => { const s = poly(Tone.Synth, { oscillator: { type: "triangle" }, envelope: { attack: .002, decay: .5, sustain: .15, release: .5 } }, -6); return (n, v, r, t, d) => s.triggerAttackRelease(n, hold(d), t, v); });
+def("organ", "Organ", "Pianos", () => { const s = poly(Tone.Synth, { oscillator: { type: "custom", partials: [1, .6, .4, .25, .15, .1] }, envelope: { attack: .02, decay: .1, sustain: .9, release: .15 } }, -16); return (n, v, r, t, d) => s.triggerAttackRelease(n, hold(d, .2), t, v); });
+def("epiano", "Keyboard", "Pianos", () => { const s = poly(Tone.FMSynth, { harmonicity: 3, modulationIndex: 3.5, envelope: { attack: .002, decay: 1, sustain: .2, release: .8 }, modulationEnvelope: { attack: .002, decay: .4, sustain: 0 } }, -10); return (n, v, r, t, d) => s.triggerAttackRelease(n, hold(d, .3), t, v); });
+// Mallets & bells
+def("marimba", "Wooden xylophone", "Bells and xylophones", () => { const s = poly(Tone.FMSynth, { harmonicity: 4, modulationIndex: 2, oscillator: { type: "sine" }, envelope: { attack: .001, decay: .5, sustain: 0, release: .5 }, modulationEnvelope: { attack: .001, decay: .1, sustain: 0 } }, -4); return (n, v, r, t) => s.triggerAttackRelease(n, .4, t, v); });
+def("xylophone", "Xylophone", "Bells and xylophones", () => { const s = poly(Tone.FMSynth, { harmonicity: 3.5, modulationIndex: 4, envelope: { attack: .001, decay: .25, sustain: 0, release: .25 }, modulationEnvelope: { attack: .001, decay: .05, sustain: 0 } }, -6); return (n, v, r, t) => s.triggerAttackRelease(tr(n, 12), .2, t, v); });
+def("kalimba", "Thumb piano", "Bells and xylophones", () => { const s = poly(Tone.FMSynth, { harmonicity: 8, modulationIndex: 1.5, envelope: { attack: .001, decay: .9, sustain: 0, release: .9 }, modulationEnvelope: { attack: .001, decay: .05, sustain: 0 } }, -4); return (n, v, r, t) => s.triggerAttackRelease(n, .6, t, v); });
+def("bells", "Bells", "Bells and xylophones", () => { const s = poly(Tone.FMSynth, { harmonicity: 3.01, modulationIndex: 14, envelope: { attack: .001, decay: 1.2, sustain: 0, release: 1.2 }, modulationEnvelope: { attack: .002, decay: .3, sustain: 0, release: .2 } }, -14); return (n, v, r, t) => s.triggerAttackRelease(tr(n, 12), 1, t, v); });
+def("glock", "Little bells", "Bells and xylophones", () => { const s = poly(Tone.FMSynth, { harmonicity: 7.1, modulationIndex: 6, envelope: { attack: .001, decay: .9, sustain: 0, release: .9 }, modulationEnvelope: { attack: .001, decay: .15, sustain: 0 } }, -14); return (n, v, r, t) => s.triggerAttackRelease(tr(n, 24), .6, t, v); });
+def("chime", "Wind chimes", "Bells and xylophones", () => { const s = poly(Tone.FMSynth, { harmonicity: 5.07, modulationIndex: 3, envelope: { attack: .001, decay: 2.2, sustain: 0, release: 2 } }, -16); return (n, v, r, t) => s.triggerAttackRelease(tr(n, 24), 1.5, t, v); });
+def("steeldrum", "Island drum", "Bells and xylophones", () => { const s = poly(Tone.FMSynth, { harmonicity: 2.5, modulationIndex: 5, envelope: { attack: .003, decay: .6, sustain: 0, release: .5 }, modulationEnvelope: { attack: .002, decay: .2, sustain: 0 } }, -8); return (n, v, r, t) => s.triggerAttackRelease(tr(n, 12), .5, t, v); });
+// Strings
+def("harp", "Harp", "Guitars and violins", () => { const s = poly(Tone.MonoSynth, { oscillator: { type: "triangle" }, filter: { type: "lowpass", Q: 1 }, envelope: { attack: .002, decay: 1.2, sustain: 0, release: 1 }, filterEnvelope: { attack: .002, decay: .4, sustain: .1, baseFrequency: 900, octaves: 3 } }, -4); return (n, v, r, t) => s.triggerAttackRelease(n, 1, t, v); });
+def("guitar", "Guitar", "Guitars and violins", () => { const s = poly(Tone.MonoSynth, { oscillator: { type: "sawtooth" }, filter: { type: "lowpass", Q: 2 }, envelope: { attack: .002, decay: .9, sustain: 0, release: .6 }, filterEnvelope: { attack: .002, decay: .25, sustain: .05, baseFrequency: 300, octaves: 3.5 } }, -10); return (n, v, r, t) => s.triggerAttackRelease(tr(n, -12), .8, t, v); });
+def("strings", "Violins", "Guitars and violins", () => { const s = poly(Tone.Synth, { oscillator: { type: "fatsawtooth", count: 3, spread: 18 }, envelope: { attack: .08, decay: .2, sustain: .8, release: .6 } }, -18); return (n, v, r, t, d) => s.triggerAttackRelease(n, hold(d, .3), t, v); });
+def("pizzicato", "Plucky violin", "Guitars and violins", () => { const s = poly(Tone.Synth, { oscillator: { type: "fatsawtooth", count: 2, spread: 10 }, envelope: { attack: .002, decay: .18, sustain: 0, release: .15 } }, -12); return (n, v, r, t) => s.triggerAttackRelease(n, .15, t, v); });
+// Voices
+def("ooh", "Singing (ooh)", "Singing", () => { const f = new Tone.Filter(900, "bandpass", -12); const vib = new Tone.Vibrato(5, .12); vib.chain(f, BUS); const s = new Tone.PolySynth(Tone.FMSynth, { harmonicity: 1, modulationIndex: 1.2, envelope: { attack: .06, decay: .2, sustain: .6, release: .5 } }); s.volume.value = 4; s.connect(vib); return (n, v, r, t, d) => s.triggerAttackRelease(n, hold(d, .35), t, v); });
+def("choir", "Singing group (laa)", "Singing", () => { const f = new Tone.Filter(1400, "lowpass"); f.connect(BUS); const s = new Tone.PolySynth(Tone.Synth, { oscillator: { type: "fatsawtooth", count: 3, spread: 25 }, envelope: { attack: .12, decay: .3, sustain: .7, release: .8 } }); s.volume.value = -12; s.connect(f); return (n, v, r, t, d) => s.triggerAttackRelease(n, hold(d, .45), t, v); });
+def("bebop", "Silly singing", "Singing", () => { const f = new Tone.Filter(1800, "lowpass"); f.connect(BUS); const s = new Tone.PolySynth(Tone.Synth, { oscillator: { type: "square" }, envelope: { attack: .005, decay: .12, sustain: .2, release: .1 } }); s.volume.value = -14; s.connect(f); return (n, v, r, t) => s.triggerAttackRelease(n, .14, t, v); });
+def("robot", "Robot", "Singing", () => { const s = poly(Tone.FMSynth, { harmonicity: 3.5, modulationIndex: 20, modulation: { type: "square" }, envelope: { attack: .01, decay: .1, sustain: .5, release: .1 } }, -18); return (n, v, r, t, d) => s.triggerAttackRelease(n, hold(d, .15), t, v); });
+// Winds
+def("flute", "Flute", "Horns and whistles", () => { const vib = new Tone.Vibrato(5.5, .08); vib.connect(BUS); const s = new Tone.PolySynth(Tone.Synth, { oscillator: { type: "sine" }, envelope: { attack: .06, decay: .1, sustain: .8, release: .25 } }); s.volume.value = -6; s.connect(vib); return (n, v, r, t, d) => s.triggerAttackRelease(tr(n, 12), hold(d, .2), t, v); });
+def("clarinet", "Recorder", "Horns and whistles", () => { const f = new Tone.Filter(1300, "lowpass"); f.connect(BUS); const s = new Tone.PolySynth(Tone.Synth, { oscillator: { type: "square" }, envelope: { attack: .03, decay: .1, sustain: .8, release: .15 } }); s.volume.value = -16; s.connect(f); return (n, v, r, t, d) => s.triggerAttackRelease(n, hold(d, .2), t, v); });
+def("trumpet", "Trumpet", "Horns and whistles", () => { const s = poly(Tone.MonoSynth, { oscillator: { type: "sawtooth" }, envelope: { attack: .03, decay: .1, sustain: .7, release: .1 }, filterEnvelope: { attack: .03, decay: .2, sustain: .5, baseFrequency: 600, octaves: 3 } }, -16); return (n, v, r, t, d) => s.triggerAttackRelease(n, hold(d, .18), t, v); });
+def("tuba", "Tuba", "Horns and whistles", () => { const s = poly(Tone.MonoSynth, { oscillator: { type: "sawtooth" }, filter: { type: "lowpass", Q: 1 }, envelope: { attack: .05, decay: .2, sustain: .7, release: .2 }, filterEnvelope: { attack: .05, decay: .2, sustain: .4, baseFrequency: 150, octaves: 2 } }, -8); return (n, v, r, t, d) => s.triggerAttackRelease(tr(n, -12), hold(d, .2), t, v); });
+def("whistle", "Whistle", "Horns and whistles", () => { const p = sweeper(4, { oscillator: { type: "sine" }, envelope: { attack: .02, decay: .1, sustain: .8, release: .1 } }, -8); return (n, v, r, t, d) => { const f = hz(n, 24); bend(p(), t, [[0, f * .88], [.08, f]], v, hold(d, .2)); }; });
+// Bass
+def("bass", "Low guitar", "Low sounds", () => { const s = poly(Tone.MonoSynth, { oscillator: { type: "sawtooth" }, filter: { Q: 2, type: "lowpass" }, envelope: { attack: .01, decay: .25, sustain: .4, release: .3 }, filterEnvelope: { attack: .01, decay: .2, sustain: .3, baseFrequency: 260, octaves: 2.6 } }, -6); return (n, v, r, t, d) => s.triggerAttackRelease(tr(n, -12), hold(d, .2), t, v); });
+def("synthbass", "Deep buzz", "Low sounds", () => { const s = poly(Tone.MonoSynth, { oscillator: { type: "square" }, filter: { Q: 4, type: "lowpass" }, envelope: { attack: .005, decay: .2, sustain: .3, release: .1 }, filterEnvelope: { attack: .005, decay: .15, sustain: .2, baseFrequency: 200, octaves: 3.5 } }, -12); return (n, v, r, t, d) => s.triggerAttackRelease(tr(n, -12), hold(d, .15), t, v); });
+// Synth & game
+def("chip", "Video game", "Space and games", () => { const s = poly(Tone.Synth, { oscillator: { type: "square" }, envelope: { attack: .001, decay: .1, sustain: .4, release: .05 } }, -20); return (n, v, r, t, d) => s.triggerAttackRelease(n, hold(d, .1), t, v); });
+def("chip2", "Beeps", "Space and games", () => { const s = poly(Tone.Synth, { oscillator: { type: "pulse", width: .2 }, envelope: { attack: .001, decay: .08, sustain: .3, release: .05 } }, -20); return (n, v, r, t, d) => s.triggerAttackRelease(tr(n, 12), hold(d, .08), t, v); });
+def("pad", "Space sound", "Space and games", () => { const s = poly(Tone.Synth, { oscillator: { type: "fatsine", count: 3, spread: 30 }, envelope: { attack: .3, decay: .5, sustain: .8, release: 1.5 } }, -12); return (n, v, r, t, d) => s.triggerAttackRelease(n, hold(d, .5), t, v); });
+def("laser", "Laser", "Space and games", () => { const p = sweeper(6, { oscillator: { type: "sawtooth" }, envelope: { attack: .001, decay: .2, sustain: 0, release: .05 } }, -18); return (n, v, r, t) => { const f = hz(n, 12); bend(p(), t, [[0, f * 4], [.2, f / 2]], v, .2); }; });
+def("boing", "Boing", "Space and games", () => { const p = sweeper(6, { oscillator: { type: "sine" }, envelope: { attack: .005, decay: .3, sustain: 0, release: .05 } }, -4); return (n, v, r, t) => { const f = hz(n); bend(p(), t, [[0, f / 2], [.25, f * 2]], v, .3); }; });
+def("zap", "Zap", "Space and games", () => { const p = sweeper(4, { oscillator: { type: "square" }, envelope: { attack: .001, decay: .4, sustain: 0, release: .05 } }, -16); return (n, v, r, t) => { const f = hz(n, 24); bend(p(), t, [[0, f * 2], [.4, 40]], v, .4); }; });
+// Funny & animals
+def("meow", "Cat", "Animals", () => { const p = sweeper(4, { oscillator: { type: "sawtooth" }, envelope: { attack: .04, decay: .2, sustain: .6, release: .15 } }, -10, () => [new Tone.Filter({ type: "bandpass", frequency: 1300, Q: 2.5 })]); return (n, v, r, t) => { const f = hz(n, 12); bend(p(), t, [[0, f], [.18, f * 1.5], [.4, f * .85]], v, .4); }; });
+def("tweet", "Bird", "Animals", () => { const p = sweeper(6, { oscillator: { type: "sine" }, envelope: { attack: .002, decay: .05, sustain: .7, release: .02 } }, -8); return (n, v, r, t) => { const f = hz(n, 24); bend(p(), t, [[0, f], [.06, f * 1.6]], v, .07); bend(p(), t + .1, [[0, f * 1.1], [.06, f * 1.8]], v, .07); }; });
+def("quack", "Duck", "Animals", () => { const p = sweeper(4, { oscillator: { type: "sawtooth" }, envelope: { attack: .005, decay: .1, sustain: .5, release: .05 } }, -6, () => [new Tone.Filter({ type: "bandpass", frequency: 1100, Q: 6 })]); return (n, v, r, t) => { const f = hz(n); bend(p(), t, [[0, f], [.15, f * .7]], v, .16); }; });
+def("moo", "Cow", "Animals", () => { const p = sweeper(3, { oscillator: { type: "sawtooth" }, envelope: { attack: .12, decay: .2, sustain: .8, release: .3 } }, -4, () => [new Tone.Filter({ type: "lowpass", frequency: 650, Q: 3 })]); return (n, v, r, t) => { const f = hz(n, -12); bend(p(), t, [[0, f * 1.05], [.3, f * 1.12], [.8, f * .85]], v, .8); }; });
+def("ribbit", "Frog", "Animals", () => { const p = sweeper(4, { oscillator: { type: "square" }, envelope: { attack: .003, decay: .04, sustain: .6, release: .02 } }, -16, () => [new Tone.Filter({ type: "lowpass", frequency: 900 })]); return (n, v, r, t) => { const f = hz(n, -12); bend(p(), t, [[0, f], [.05, f * 1.3]], v, .06); bend(p(), t + .09, [[0, f * 1.1], [.06, f * 1.4]], v, .08); }; });
+// Drums (on a drum kit, the row picks which drum: bottom = kick ... top = cymbal)
+function kit(parts) { return () => { const ps = parts.map(m => m()); return (n, v, r, t) => ps[Math.min(ps.length - 1, Math.floor(r * ps.length))](n, v, t); }; }
+const KICK = () => { const s = new Tone.MembraneSynth({ octaves: 6, envelope: { decay: .4 } }); s.connect(BUS); return (n, v, t) => s.triggerAttackRelease("C1", .4, t, v); };
+const SNARE = () => { const s = new Tone.NoiseSynth({ noise: { type: "white" }, envelope: { attack: .001, decay: .18, sustain: 0 } }); s.volume.value = -10; s.connect(BUS); return (n, v, t) => s.triggerAttackRelease(.18, t, v); };
+const HAT = (decay = .06) => () => { const s = new Tone.MetalSynth({ envelope: { decay }, harmonicity: 5.1, resonance: 4000, octaves: 1.5 }); s.volume.value = -22; s.connect(BUS); return (n, v, t) => s.triggerAttackRelease("C6", decay, t, v); };
+const CLAP = () => { const f = new Tone.Filter(1400, "bandpass"); f.connect(BUS); const s = new Tone.NoiseSynth({ envelope: { attack: .001, decay: .09, sustain: 0 } }); s.volume.value = -6; s.connect(f); return (n, v, t) => { s.triggerAttackRelease(.02, t, v); s.triggerAttackRelease(.02, t + .015, v); s.triggerAttackRelease(.09, t + .03, v); }; };
+const KICK808 = () => { const s = new Tone.MembraneSynth({ pitchDecay: .08, octaves: 8, envelope: { decay: .9, sustain: 0 } }); s.connect(BUS); return (n, v, t) => s.triggerAttackRelease("A0", .8, t, v); };
+const COWBELL = () => { const f = new Tone.Filter(900, "bandpass"); f.connect(BUS); const s = new Tone.PolySynth(Tone.Synth, { oscillator: { type: "square" }, envelope: { attack: .001, decay: .25, sustain: 0, release: .1 } }); s.volume.value = -20; s.connect(f); return (n, v, t) => s.triggerAttackRelease([545, 815], .2, t, v); };
+def("drums", "Drums", "Drums", kit([KICK, SNARE, HAT(.06), HAT(.3)])); INSTRUMENTS.drums.drumNames = ["Kick", "Snare", "Hi-hat", "Open hat"];
+def("kit808", "Dance drums", "Drums", kit([KICK808, CLAP, HAT(.05), COWBELL])); INSTRUMENTS.kit808.drumNames = ["Kick", "Clap", "Hi-hat", "Cowbell"];
+def("claps", "Clapping", "Drums", () => { const c = CLAP(); return (n, v, r, t) => c(n, v, t); });
+def("shaker", "Shaker", "Drums", () => { const f = new Tone.Filter(6000, "highpass"); f.connect(BUS); const s = new Tone.NoiseSynth({ envelope: { attack: .02, decay: .07, sustain: 0 } }); s.volume.value = -10; s.connect(f); return (n, v, r, t) => s.triggerAttackRelease(.08, t, v); });
+def("cowbell", "Cowbell", "Drums", () => { const c = COWBELL(); return (n, v, r, t) => c(n, v, t); });
+def("bongos", "Hand drums", "Drums", () => { const s = new Tone.MembraneSynth({ pitchDecay: .02, octaves: 1.5, envelope: { attack: .001, decay: .18, sustain: 0 } }); s.volume.value = -2; s.connect(BUS); return (n, v, r, t) => s.triggerAttackRelease(n, .15, t, v); });
+def("woodblock", "Wood knock", "Drums", () => { const s = new Tone.MembraneSynth({ pitchDecay: .008, octaves: 2, envelope: { attack: .001, decay: .12, sustain: 0 } }); s.volume.value = -4; s.connect(BUS); return (n, v, r, t) => s.triggerAttackRelease(tr(n, 12), .1, t, v); });
+def("timpani", "Big drum", "Drums", () => { const s = new Tone.MembraneSynth({ pitchDecay: .03, octaves: 1.2, envelope: { attack: .002, decay: 1.4, sustain: 0, release: 1 } }); s.connect(BUS); return (n, v, r, t) => s.triggerAttackRelease(tr(n, -12), 1.2, t, v); });
+// Big hits (good for X)
+def("crash", "Crash!", "Big noises", () => { const f = new Tone.Filter(3000, "highpass"); f.connect(BUS); const s = new Tone.NoiseSynth({ envelope: { attack: .001, decay: 1.6, sustain: 0 } }); s.volume.value = -12; s.connect(f); const m = new Tone.MetalSynth({ envelope: { decay: 1.4 }, harmonicity: 3.1, resonance: 3000 }); m.volume.value = -26; m.connect(BUS); return (n, v, r, t) => { s.triggerAttackRelease(1.6, t, v); m.triggerAttackRelease("C4", 1.4, t, v); }; });
+def("gong", "Gong", "Big noises", () => { const s = poly(Tone.FMSynth, { harmonicity: 1.41, modulationIndex: 12, envelope: { attack: .01, decay: 4, sustain: 0, release: 3 }, modulationEnvelope: { attack: .2, decay: 2, sustain: 0 } }, -10); return (n, v, r, t) => s.triggerAttackRelease(tr(n, -12), 3, t, v); });
+def("thunder", "Thunder", "Big noises", () => { const f = new Tone.Filter(380, "lowpass"); f.connect(BUS); const s = new Tone.NoiseSynth({ noise: { type: "brown" }, envelope: { attack: .06, decay: 2.6, sustain: 0 } }); s.volume.value = 6; s.connect(f); return (n, v, r, t) => s.triggerAttackRelease(2.6, t, v); });
+def("boom", "Boom!", "Big noises", () => { const k = new Tone.MembraneSynth({ pitchDecay: .2, octaves: 5, envelope: { decay: 1.6, sustain: 0 } }); k.connect(BUS); const f = new Tone.Filter(600, "lowpass"); f.connect(BUS); const s = new Tone.NoiseSynth({ noise: { type: "brown" }, envelope: { attack: .001, decay: .9, sustain: 0 } }); s.connect(f); return (n, v, r, t) => { k.triggerAttackRelease("C0", 1.5, t, v); s.triggerAttackRelease(.9, t, v); }; });
+def("airhorn", "Honk!", "Big noises", () => { const s = poly(Tone.Synth, { oscillator: { type: "sawtooth" }, envelope: { attack: .01, decay: .1, sustain: .9, release: .1 } }, -22); return (n, v, r, t) => s.triggerAttackRelease([n, tr(n, 4), tr(n, 7)], .55, t, v); });
+def("tada", "Ta-da!", "Big noises", () => { const s = poly(Tone.MonoSynth, { oscillator: { type: "sawtooth" }, envelope: { attack: .01, decay: .2, sustain: .6, release: .3 }, filterEnvelope: { attack: .01, decay: .2, sustain: .5, baseFrequency: 900, octaves: 2 } }, -18); return (n, v, r, t) => { [0, 4, 7, 12].forEach((iv, k) => s.triggerAttackRelease(tr(n, iv), k === 3 ? .7 : .1, t + k * .07, v)); }; });
+def("silence", "Quiet", "Other", () => () => {});
+
+
+
+const SCALES = {
+  major:      { label: "Major", steps: [0, 2, 4, 5, 7, 9, 11] },
+  pentatonic: { label: "Pentatonic (can't sound wrong)", steps: [0, 2, 4, 7, 9] },
+  minor:      { label: "Minor", steps: [0, 2, 3, 5, 7, 8, 10] },
+  chromatic:  { label: "Every note", steps: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11] },
+};
+const KEYS = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+const PITCH_COLORS = ["#e8312f", "#ef6a3a", "#f78b1f", "#f6b31b", "#efc000", "#7cc142", "#3fae6e", "#1aa39a", "#3f86c6", "#6a4c9c", "#a04da0", "#e74b9a"];
+
+/* Melody sounds the "Melody sound" button cycles through (ids from INSTRUMENTS) */
+const MELODY_SOUNDS = ["marimba", "piano", "strings", "flute", "kalimba", "bells", "chip", "guitar", "ooh"];
+
+/* The four drum rows, top to bottom on screen. "shape" is how a hit is drawn. */
+const DRUM_ROWS = [
+  { key: "bop",   label: "Bop",   shape: "diamond" },
+  { key: "knock", label: "Knock", shape: "square" },
+  { key: "clap",  label: "Clap",  shape: "triangle" },
+  { key: "boom",  label: "Boom",  shape: "circle" },
+];
+/* Drum kits: one sound maker per drum row key. Each returns play(time, velocity). */
+const DRUM_KITS = {
+  electronic: { label: "Electronic", make: () => ({
+    boom:  (() => { const k = KICK808(); return (t, v) => k("", v, t); })(),
+    clap:  (() => { const c = CLAP(); return (t, v) => c("", v, t); })(),
+    knock: (() => { const s = new Tone.MembraneSynth({ pitchDecay: .008, octaves: 2, envelope: { attack: .001, decay: .12, sustain: 0 } }); s.volume.value = -4; s.connect(BUS); return (t, v) => s.triggerAttackRelease("A5", .1, t, v); })(),
+    bop:   (() => { const s = new Tone.MembraneSynth({ pitchDecay: .02, octaves: 1.5, envelope: { attack: .001, decay: .18, sustain: 0 } }); s.volume.value = -2; s.connect(BUS); return (t, v) => s.triggerAttackRelease("E4", .15, t, v); })(),
+  }) },
+  kit: { label: "Drum set", make: () => ({
+    boom:  (() => { const k = KICK(); return (t, v) => k("", v, t); })(),
+    clap:  (() => { const s = SNARE(); return (t, v) => s("", v, t); })(),
+    knock: (() => { const s = new Tone.MembraneSynth({ pitchDecay: .006, octaves: 2.5, envelope: { attack: .001, decay: .09, sustain: 0 } }); s.volume.value = -6; s.connect(BUS); return (t, v) => s.triggerAttackRelease("D6", .08, t, v); })(),
+    bop:   (() => { const s = new Tone.MembraneSynth({ pitchDecay: .03, octaves: 1.2, envelope: { attack: .001, decay: .3, sustain: 0 } }); s.volume.value = -2; s.connect(BUS); return (t, v) => s.triggerAttackRelease("A3", .25, t, v); })(),
+  }) },
+  hands: { label: "Hand drums", make: () => ({
+    boom:  (() => { const s = new Tone.MembraneSynth({ pitchDecay: .05, octaves: 3, envelope: { attack: .001, decay: .5, sustain: 0 } }); s.connect(BUS); return (t, v) => s.triggerAttackRelease("C2", .4, t, v); })(),
+    clap:  (() => { const c = CLAP(); return (t, v) => c("", v, t); })(),
+    knock: (() => { const s = new Tone.MembraneSynth({ pitchDecay: .008, octaves: 2, envelope: { attack: .001, decay: .12, sustain: 0 } }); s.volume.value = -4; s.connect(BUS); return (t, v) => s.triggerAttackRelease("F5", .1, t, v); })(),
+    bop:   (() => { const s = new Tone.MembraneSynth({ pitchDecay: .02, octaves: 1.5, envelope: { attack: .001, decay: .2, sustain: 0 } }); s.volume.value = -2; s.connect(BUS); return (t, v) => s.triggerAttackRelease("G4", .15, t, v); })(),
+  }) },
+};
+
+/* The song this page opens with: the one made in class (melody as [column, MIDI note]; drums as [column, row key]) */
+const START_SONG = {
+  bars: 4, beats: 4, split: 1, scale: "major", root: 48, octaves: 2, tempo: 120, melodySound: "marimba", kit: "electronic",
+  melody: [[9, 65], [6, 62], [4, 65], [9, 53], [8, 57], [9, 60], [13, 67], [11, 64]],
+  drums: [[0, "clap"], [2, "clap"], [3, "clap"], [5, "clap"], [6, "clap"], [8, "clap"], [10, "clap"], [12, "clap"], [14, "clap"],
+          [1, "boom"], [4, "boom"], [1, "knock"], [2, "bop"], [6, "bop"], [8, "bop"]],
+  labels: { bop: "Bop", knock: "Knock", clap: "Clap", boom: "Boom" },
+};
+
+/* =====================================================================
+   ENGINE
+   ===================================================================== */
+function load(key, fallback) { try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; } catch (e) { return fallback; } }
+function save(key, v) { try { localStorage.setItem(key, JSON.stringify(v)); } catch (e) {} }
+let song = load("classsong-v1", null) || structuredClone(START_SONG);
+song.labels = Object.assign({}, START_SONG.labels, song.labels || {});
+if (!INSTRUMENTS[song.melodySound]) song.melodySound = "marimba";
+if (!DRUM_KITS[song.kit]) song.kit = "electronic";
+const history = [];
+const $ = id => document.getElementById(id);
+const canvas = $("canvas"), ctx = canvas.getContext("2d");
+let W = 0, H = 0, DPR = 1, ROWS = [], G = {};
+const state = { playing: false, step: -1, bumps: {}, drag: null };
+
+const cols = () => song.bars * song.beats * song.split;
+function buildRows() {
+  const steps = SCALES[song.scale].steps; ROWS = [];
+  for (let i = 0; i < steps.length * song.octaves + 1; i++) {
+    const midi = song.root + 12 * Math.floor(i / steps.length) + steps[i % steps.length];
+    ROWS.push({ midi, name: KEYS[midi % 12] + (Math.floor(midi / 12) - 1), color: PITCH_COLORS[midi % 12] });
+  }
+}
+function layout() {
+  const r = canvas.getBoundingClientRect();
+  DPR = Math.min(window.devicePixelRatio || 1, 2.5); W = r.width; H = r.height;
+  canvas.width = Math.round(W * DPR); canvas.height = Math.round(H * DPR);
+  const labelW = W < 520 ? 64 : 104, gap = 10, drumH = Math.min(46, Math.max(28, H * .065));
+  G = { x0: labelW, x1: W, y0: 0, melodyBottom: H - gap - drumH * 4, drumTop: H - drumH * 4, y1: H, drumH, labelW };
+  G.colW = (G.x1 - G.x0) / cols(); G.rowH = (G.melodyBottom - G.y0) / ROWS.length;
+}
+window.addEventListener("resize", layout);
+
+/* ---------- audio ---------- */
+let FX = null;
+function buildAudio() {
+  if (FX) return;
+  const limiter = new Tone.Limiter(-1).toDestination();
+  const master = new Tone.Volume(0).connect(limiter);
+  BUS = new Tone.Gain(1).connect(master);
+  const rev = new Tone.Reverb({ decay: 2, wet: 1 }); rev.connect(master);
+  const send = new Tone.Gain(.15).connect(rev); BUS.connect(send);
+  FX = { master }; setupTransport();
+}
+function ensureAudio() {
+  if (typeof Tone === "undefined") { toast("The sound library didn't load. Check the internet connection and reload."); return Promise.resolve(false); }
+  try { buildAudio(); } catch (e) { console.warn(e); return Promise.resolve(false); }
+  if (Tone.context.state === "running") return Promise.resolve(true);
+  try { Tone.context.resume(); } catch (e) {}
+  return new Promise(res => { const t0 = performance.now(); (function w() { if (Tone.context.state === "running") res(true); else if (performance.now() - t0 > 1500) res(false); else setTimeout(w, 30); })(); });
+}
+["pointerup", "click", "keydown", "touchend"].forEach(ev => document.addEventListener(ev, () => { if (typeof Tone !== "undefined" && Tone.context.state !== "running") { try { buildAudio(); Tone.context.resume(); } catch (e) {} } }, true));
+const instCache = {}, kitCache = {};
+function inst(id) { if (!instCache[id]) { try { instCache[id] = INSTRUMENTS[id].make(); } catch (e) { console.warn(e); instCache[id] = () => {}; } } return instCache[id]; }
+function drumKit(id) { if (!kitCache[id]) { try { kitCache[id] = DRUM_KITS[id].make(); } catch (e) { console.warn(e); kitCache[id] = {}; } } return kitCache[id]; }
+const stepSeconds = () => 60 / song.tempo / song.split;
+function playMelody(midi, time) { const name = KEYS[midi % 12] + (Math.floor(midi / 12) - 1); try { inst(song.melodySound)(name, .8, .5, time, stepSeconds() * .95); } catch (e) {} }
+function playDrum(key, time) { try { const f = drumKit(song.kit)[key]; if (f) f(time, .9); } catch (e) {} }
+
+let stepTicks = 192;
+function setupTransport() { applyTransport(); }
+function applyTransport() {
+  if (typeof Tone === "undefined" || !FX) return;
+  const T = Tone.Transport; stepTicks = Tone.Time("4n").toTicks() / song.split;
+  T.bpm.value = song.tempo; T.loop = true; T.loopStart = 0; T.loopEnd = Math.round(stepTicks * cols()) + "i";
+  T.cancel(0); setupRepeatOnly();
+}
+function setupRepeatOnly() {
+  const T = Tone.Transport;
+  T.scheduleRepeat(time => {
+    const n = cols(), step = Math.round(T.getTicksAtTime(time) / stepTicks) % n;
+    song.melody.forEach(([c, m]) => { if (c === step) playMelody(m, time); });
+    song.drums.forEach(([c, k]) => { if (c === step) playDrum(k, time); });
+    Tone.Draw.schedule(() => { state.step = step; const now = performance.now(); song.melody.forEach(([c, m]) => { if (c === step) state.bumps["m" + c + ":" + m] = now; }); song.drums.forEach(([c, k]) => { if (c === step) state.bumps["d" + c + ":" + k] = now; }); }, time);
+  }, Math.round(stepTicks) + "i", 0);
+}
+function setPlaying(on) {
+  state.playing = on;
+  if (FX) { Tone.Transport.stop(); state.step = -1; if (on) { Tone.Transport.position = 0; Tone.Transport.start("+0.05"); } }
+  $("play-icon").innerHTML = on ? '<path d="M7 5h4v14H7zM13 5h4v14h-4z"/>' : '<path d="M8 5v14l11-7z"/>';
+  $("btn-play").setAttribute("aria-label", on ? "Stop" : "Play");
+}
+
+/* ---------- editing ---------- */
+function persist() { save("classsong-v1", song); }
+function snapshot() { history.push(JSON.stringify({ melody: song.melody, drums: song.drums })); if (history.length > 200) history.shift(); }
+function undo() { const h = history.pop(); if (!h) { toast("Nothing to undo"); return; } Object.assign(song, JSON.parse(h)); persist(); }
+function cellAt(x, y) {
+  if (x < G.x0 || x >= G.x1) return null;
+  const c = Math.floor((x - G.x0) / G.colW);
+  if (y >= G.y0 && y < G.melodyBottom) { const r = ROWS.length - 1 - Math.floor((y - G.y0) / G.rowH); return { kind: "m", c, midi: ROWS[Math.max(0, Math.min(ROWS.length - 1, r))].midi }; }
+  if (y >= G.drumTop && y < G.y1) { const i = Math.floor((y - G.drumTop) / G.drumH); return { kind: "d", c, key: DRUM_ROWS[Math.max(0, Math.min(3, i))].key }; }
+  return null;
+}
+const hasCell = cell => cell.kind === "m" ? song.melody.some(([c, m]) => c === cell.c && m === cell.midi) : song.drums.some(([c, k]) => c === cell.c && k === cell.key);
+function setCell(cell, on) {
+  const list = cell.kind === "m" ? song.melody : song.drums, val = cell.kind === "m" ? cell.midi : cell.key;
+  const i = list.findIndex(([c, v]) => c === cell.c && v === val);
+  if (on && i < 0) { list.push([cell.c, val]); ensureAudio().then(ok => { if (ok) cell.kind === "m" ? playMelody(val, Tone.now() + .02) : playDrum(val, Tone.now() + .02); }); state.bumps[cell.kind + cell.c + ":" + val] = performance.now(); }
+  if (!on && i >= 0) list.splice(i, 1);
+}
+const stage = $("stage");
+function pt(e) { const r = canvas.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; }
+stage.addEventListener("pointerdown", e => {
+  if (!e.isPrimary || (e.pointerType === "mouse" && e.button !== 0)) return;
+  e.preventDefault(); ensureAudio();
+  const cell = cellAt(...pt(e)); if (!cell) return;
+  try { stage.setPointerCapture(e.pointerId); } catch (er) {}
+  snapshot();
+  const on = !hasCell(cell); setCell(cell, on);
+  state.drag = { id: e.pointerId, on, kind: cell.kind, last: cell.kind + cell.c + ":" + (cell.midi ?? cell.key) };
+}, { passive: false });
+stage.addEventListener("pointermove", e => {
+  const d = state.drag; if (!d || e.pointerId !== d.id) return;
+  const cell = cellAt(...pt(e)); if (!cell || cell.kind !== d.kind) return;
+  const id = cell.kind + cell.c + ":" + (cell.midi ?? cell.key); if (id === d.last) return; d.last = id;
+  setCell(cell, d.on);
+});
+const endDrag = e => { if (state.drag && e.pointerId === state.drag.id) { state.drag = null; persist(); } };
+stage.addEventListener("pointerup", endDrag); stage.addEventListener("pointercancel", endDrag);
+
+/* ---------- drawing ---------- */
+function shape(kind, x, y, r) {
+  ctx.beginPath();
+  if (kind === "circle") ctx.arc(x, y, r, 0, 7);
+  else if (kind === "triangle") { ctx.moveTo(x, y - r * 1.1); ctx.lineTo(x + r * 1.1, y + r * .8); ctx.lineTo(x - r * 1.1, y + r * .8); ctx.closePath(); }
+  else if (kind === "square") ctx.rect(x - r * .85, y - r * .85, r * 1.7, r * 1.7);
+  else { ctx.moveTo(x, y - r * 1.15); ctx.lineTo(x + r * 1.15, y); ctx.lineTo(x, y + r * 1.15); ctx.lineTo(x - r * 1.15, y); ctx.closePath(); }
+  ctx.fill();
+}
+function draw(now) {
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, W, H);
+  const n = cols(), perBar = song.beats * song.split;
+  // alternate bars get a light fill (melody + drums)
+  for (let b = 0; b < song.bars; b++) if (b % 2) { ctx.fillStyle = "#f3f4f7"; ctx.fillRect(G.x0 + b * perBar * G.colW, G.y0, perBar * G.colW, G.melodyBottom - G.y0); ctx.fillRect(G.x0 + b * perBar * G.colW, G.drumTop, perBar * G.colW, G.y1 - G.drumTop); }
+  if (state.playing && state.step >= 0) { ctx.fillStyle = "rgba(22,168,240,.12)"; ctx.fillRect(G.x0 + state.step * G.colW, 0, G.colW, H); }
+  // grid lines
+  ctx.lineWidth = 1;
+  for (let r = 0; r <= ROWS.length; r++) { const y = Math.round(G.y0 + r * G.rowH) + .5; ctx.strokeStyle = (ROWS.length - r) % SCALES[song.scale].steps.length === 0 ? "#b9c7d6" : "#dfe6ee"; ctx.beginPath(); ctx.moveTo(G.x0, y); ctx.lineTo(G.x1, y); ctx.stroke(); }
+  for (let i = 0; i <= 4; i++) { const y = Math.round(G.drumTop + i * G.drumH) + .5; ctx.strokeStyle = "#dfe6ee"; ctx.beginPath(); ctx.moveTo(G.x0, y); ctx.lineTo(G.x1, y); ctx.stroke(); }
+  for (let c = 0; c <= n; c++) {
+    const x = Math.round(G.x0 + c * G.colW) + .5; ctx.strokeStyle = c % song.split === 0 ? "#b9c7d6" : "#e8edf2"; ctx.lineWidth = c % perBar === 0 ? 2 : 1;
+    ctx.beginPath(); ctx.moveTo(x, G.y0); ctx.lineTo(x, G.melodyBottom); ctx.moveTo(x, G.drumTop); ctx.lineTo(x, G.y1); ctx.stroke();
+  }
+  // melody notes
+  song.melody.forEach(([c, m]) => {
+    const r = ROWS.findIndex(o => o.midi === m); if (r < 0 || c >= n) return;
+    const t = now - (state.bumps["m" + c + ":" + m] || -1e9), b = t < 220 ? Math.sin(t / 220 * Math.PI) : 0;
+    const x = G.x0 + c * G.colW, y = G.y0 + (ROWS.length - 1 - r) * G.rowH, pad = -b * 3;
+    ctx.fillStyle = ROWS[r].color; ctx.fillRect(x + 1 + pad, y + 1 + pad, G.colW - 1 - 2 * pad, G.rowH - 1 - 2 * pad);
+  });
+  // drum cells
+  DRUM_ROWS.forEach((d, i) => {
+    const cy = G.drumTop + (i + .5) * G.drumH;
+    for (let c = 0; c < n; c++) {
+      const cx = G.x0 + (c + .5) * G.colW, on = song.drums.some(([cc, k]) => cc === c && k === d.key);
+      if (on) { const t = now - (state.bumps["d" + c + ":" + d.key] || -1e9), b = t < 220 ? Math.sin(t / 220 * Math.PI) : 0; ctx.fillStyle = "#16a8f0"; shape(d.shape, cx, cy, Math.min(G.colW, G.drumH) * (.28 + .1 * b)); }
+      else { ctx.fillStyle = "#c9d3dd"; ctx.beginPath(); ctx.arc(cx, cy, c % song.split === 0 ? 2.6 : 1.8, 0, 7); ctx.fill(); }
+    }
+  });
+  // legend on the left
+  ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, G.labelW, H);
+  const pad = 6, small = G.labelW < 90;
+  ctx.fillStyle = "#7c4dff"; roundRect(pad, G.y0 + pad, G.labelW - pad * 2, G.melodyBottom - G.y0 - pad * 2, 10); ctx.fill();
+  ctx.save(); ctx.translate(G.labelW / 2, (G.y0 + G.melodyBottom) / 2); if (small) ctx.rotate(-Math.PI / 2);
+  ctx.fillStyle = "#fff"; ctx.font = "600 16px Fredoka, system-ui, sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText("MELODY", 0, 0); ctx.restore();
+  DRUM_ROWS.forEach((d, i) => {
+    const y = G.drumTop + i * G.drumH;
+    ctx.fillStyle = "#e3f2fd"; roundRect(pad, y + 2, G.labelW - pad * 2, G.drumH - 4, 8); ctx.fill();
+    ctx.fillStyle = "#16a8f0"; shape(d.shape, pad + 14, y + G.drumH / 2, 6);
+    ctx.fillStyle = "#0d47a1"; ctx.font = `600 ${small ? 12 : 15}px Fredoka, system-ui, sans-serif`; ctx.textAlign = "left"; ctx.textBaseline = "middle";
+    ctx.fillText(song.labels[d.key] || d.label, pad + 26, y + G.drumH / 2 + .5);
+  });
+}
+function roundRect(x, y, w, h, r) { ctx.beginPath(); ctx.roundRect(x, y, w, h, r); }
+function loop(now) { draw(now); requestAnimationFrame(loop); }
+
+/* ---------- controls ---------- */
+function toast(msg) { const t = $("toast"); t.textContent = msg; t.classList.add("show"); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove("show"), 2000); }
+function renderDock() {
+  $("melody-name").textContent = INSTRUMENTS[song.melodySound].label;
+  $("kit-name").textContent = DRUM_KITS[song.kit].label;
+  $("tempo").value = song.tempo; $("tempo-val").textContent = song.tempo;
+}
+function changedShape() { buildRows(); layout(); applyTransport(); persist(); }
+$("btn-play").onclick = () => { if (state.playing) { setPlaying(false); return; } ensureAudio().then(ok => { if (ok) { applyTransport(); setPlaying(true); } else toast("Sound is blocked. Tap the page once, then press play again."); }); };
+$("btn-melody").onclick = () => { const i = MELODY_SOUNDS.indexOf(song.melodySound); song.melodySound = MELODY_SOUNDS[(i + 1) % MELODY_SOUNDS.length]; renderDock(); persist(); ensureAudio().then(ok => ok && playMelody(60, Tone.now() + .02)); };
+$("btn-kit").onclick = () => { const ks = Object.keys(DRUM_KITS), i = ks.indexOf(song.kit); song.kit = ks[(i + 1) % ks.length]; renderDock(); persist(); ensureAudio().then(ok => { if (!ok) return; const t = Tone.now() + .02; ["boom", "clap", "knock", "bop"].forEach((k, j) => playDrum(k, t + j * .18)); }); };
+$("tempo").oninput = () => { song.tempo = +$("tempo").value; $("tempo-val").textContent = song.tempo; if (FX) Tone.Transport.bpm.value = song.tempo; persist(); };
+$("btn-undo").onclick = undo;
+$("btn-clear").onclick = () => { $("confirm").hidden = false; $("confirm-no").focus(); };
+$("confirm-no").onclick = () => { $("confirm").hidden = true; };
+$("confirm-yes").onclick = () => { snapshot(); song.melody = []; song.drums = []; persist(); $("confirm").hidden = true; };
+["confirm", "settings"].forEach(id => $(id).addEventListener("click", e => { if (e.target === $(id)) $(id).hidden = true; }));
+$("settings-done").onclick = () => { $("settings").hidden = true; };
+$("btn-settings").onclick = () => { buildSettings(); $("settings").hidden = false; };
+if (!document.fullscreenEnabled) $("btn-full").hidden = true;
+$("btn-full").onclick = () => { const p = document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen({ navigationUI: "hide" }); if (p && p.catch) p.catch(() => toast("Full screen isn't allowed here. Press F11 instead.")); };
+document.addEventListener("fullscreenchange", () => { $("full-icon").innerHTML = document.fullscreenElement ? '<path d="M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 11h2v-3h3v-2h-5v5zm2-11V5h-2v5h5V8h-3z"/>' : '<path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/>'; setTimeout(layout, 50); });
+document.addEventListener("keydown", e => {
+  if (e.target.closest && e.target.closest("select,input")) return;
+  if (e.key === "Escape") { $("confirm").hidden = true; $("settings").hidden = true; }
+  if (e.key === " ") { e.preventDefault(); $("btn-play").click(); }
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") { e.preventDefault(); undo(); }
+  if (e.key === "f" && !e.ctrlKey && !e.metaKey && !$("btn-full").hidden) $("btn-full").click();
+});
+function buildSettings() {
+  const B = $("settings-body"); B.innerHTML = "";
+  const h = t => { const e = document.createElement("h3"); e.textContent = t; B.append(e); };
+  const field = (label, el) => { const f = document.createElement("div"); f.className = "field"; const l = document.createElement("label"); l.textContent = label; l.htmlFor = el.id; f.append(l, el); B.append(f); };
+  const sel = (id, opts, val, fn) => { const s = document.createElement("select"); s.id = id; opts.forEach(([v, t]) => s.append(new Option(t, v))); s.value = String(val); s.onchange = () => fn(s.value); return s; };
+  const nums = (a, b) => Array.from({ length: b - a + 1 }, (_, i) => [a + i, String(a + i)]);
+  h("Song length");
+  field("Bars", sel("s-bars", nums(1, 16), song.bars, v => { song.bars = +v; changedShape(); }));
+  field("Beats in a bar", sel("s-beats", nums(2, 7), song.beats, v => { song.beats = +v; changedShape(); }));
+  field("Split each beat into", sel("s-split", [[1, "1"], [2, "2"], [3, "3"], [4, "4"]], song.split, v => { song.split = +v; changedShape(); }));
+  h("Notes");
+  field("Scale", sel("s-scale", Object.entries(SCALES).map(([k, v]) => [k, v.label]), song.scale, v => { song.scale = v; changedShape(); }));
+  field("Start on", sel("s-root", [36, 48, 60].flatMap(o => KEYS.map((k, i) => [o + i, k + (o / 12 - 1)])), song.root, v => { song.root = +v; changedShape(); }));
+  field("Range", sel("s-oct", [[1, "1 octave"], [2, "2 octaves"], [3, "3 octaves"]], song.octaves, v => { song.octaves = +v; changedShape(); }));
+  h("Drum row names");
+  DRUM_ROWS.forEach(d => { const i = document.createElement("input"); i.type = "text"; i.id = "s-lbl-" + d.key; i.maxLength = 10; i.value = song.labels[d.key]; i.oninput = () => { song.labels[d.key] = i.value || d.label; persist(); }; field(d.shape[0].toUpperCase() + d.shape.slice(1) + " row", i); });
+  const p = document.createElement("p"); p.style.marginTop = "14px"; p.textContent = "Notes outside the grid are kept and come back if you make the grid bigger again."; B.append(p);
+  const r = document.createElement("div"); r.className = "row"; r.style.justifyContent = "flex-start";
+  const b = document.createElement("button"); b.textContent = "Load the class song"; b.onclick = () => { snapshot(); const keepLabels = song.labels; song = structuredClone(START_SONG); song.labels = keepLabels; renderDock(); changedShape(); $("settings").hidden = true; toast("Class song loaded"); };
+  r.append(b); B.append(r);
+}
+
+/* ---------- start ---------- */
+buildRows(); layout(); renderDock(); requestAnimationFrame(loop);
+window.songmaker = { song, state, ensureAudio };
+</script>
+
+</body></html>

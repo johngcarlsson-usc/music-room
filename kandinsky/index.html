@@ -1,0 +1,996 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Kandinsky Studio</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&display=swap">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+<style>
+/* Layout: one big open sheet of paper. A playhead sweeps across it. Instrument "paints" sit in a strip
+   above the bottom dock; tools top-right; a settings drawer slides in from the right.
+   Deliberately single-theme: it is paper, the same in light and dark. */
+:root {
+  --paper: #fbfaf6;
+  --ink: #2b2a33;
+  --ink-soft: #6c6a78;
+  --panel: #ffffff;
+  --edge: #e2e0d8;
+  --hover: #f3f2ec;
+  --focus: #3d7be0;
+  --font-display: "Fredoka", "Baloo 2", "Comic Sans MS", system-ui, sans-serif;
+  --font-body: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  color-scheme: light;
+}
+html, body { height: 100%; }
+[hidden] { display: none !important; }
+body { margin: 0; background: var(--paper); color: var(--ink); font-family: var(--font-body); overflow: hidden; overscroll-behavior: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+#stage { position: fixed; inset: 0; touch-action: none; cursor: crosshair; }
+#stage.tool-move { cursor: grab; }
+#stage.tool-erase { cursor: cell; }
+#stage.tool-write { cursor: text; }
+.aa { font-family: var(--font-display); font-weight: 700; font-size: 18px; line-height: 1; }
+#stage canvas { display: block; width: 100%; height: 100%; }
+
+.titlechip { position: fixed; z-index: 5; pointer-events: none; top: calc(10px + env(safe-area-inset-top, 0px)); left: max(16px, env(safe-area-inset-left, 0px)); font-family: var(--font-display); font-weight: 600; font-size: 20px; }
+.titlechip small { display: block; font-family: var(--font-body); font-weight: 400; font-size: 12px; color: var(--ink-soft); }
+
+.pill { display: flex; align-items: center; gap: 4px; padding: 6px; background: var(--panel); border: 1px solid var(--edge); border-radius: 999px; box-shadow: 0 6px 24px rgba(43,42,51,.10); }
+.pill button { font-family: var(--font-display); font-weight: 600; font-size: 16px; color: var(--ink); border: 0; background: transparent; border-radius: 999px; min-width: 48px; height: 48px; padding: 0 14px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; cursor: pointer; touch-action: manipulation; }
+.pill button:hover { background: var(--hover); }
+.pill button[aria-pressed="true"] { background: var(--ink); color: #fff; }
+button:focus-visible, select:focus-visible, input:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.pill svg { width: 22px; height: 22px; fill: currentColor; flex: none; }
+.tools { position: fixed; z-index: 5; top: calc(10px + env(safe-area-inset-top, 0px)); right: max(16px, env(safe-area-inset-right, 0px)); }
+.dock { position: fixed; z-index: 5; left: 50%; transform: translateX(-50%); bottom: calc(12px + env(safe-area-inset-bottom, 0px)); max-width: calc(100% - 32px); }
+.dock .play { width: 60px; height: 60px; min-width: 60px; padding: 0; background: var(--ink); color: #fff; }
+.dock .play:hover { background: #3c3b46; }
+.dock .play svg { width: 28px; height: 28px; }
+.sep { width: 1px; height: 30px; background: var(--edge); flex: none; }
+.speed { font-family: var(--font-display); font-weight: 600; font-variant-numeric: tabular-nums; min-width: 5.2ch; text-align: center; font-size: 15px;  white-space: nowrap; }
+
+/* instrument paints */
+.paints { position: fixed; z-index: 5; left: max(16px, env(safe-area-inset-left, 0px)); right: max(16px, env(safe-area-inset-right, 0px)); bottom: calc(86px + env(safe-area-inset-bottom, 0px)); display: flex; justify-content: center; pointer-events: none; }
+.paints-inner { pointer-events: auto; display: flex; gap: 6px; overflow-x: auto; padding: 6px; max-width: 100%; background: rgba(255,255,255,.92); border: 1px solid var(--edge); border-radius: 18px; box-shadow: 0 6px 24px rgba(43,42,51,.08); scrollbar-width: thin; }
+.chip { flex: none; display: inline-flex; align-items: center; gap: 7px; height: 40px; padding: 0 12px 0 8px; border-radius: 12px; border: 2px solid transparent; background: #f6f5f0; font-family: var(--font-display); font-weight: 600; font-size: 15px; color: var(--ink); cursor: pointer; touch-action: manipulation; white-space: nowrap; }
+.chip i { width: 22px; height: 22px; border-radius: 50%; display: block; flex: none; }
+.chip:hover { background: var(--hover); }
+.chip[aria-pressed="true"] { background: #fff; border-color: var(--c, var(--ink)); box-shadow: 0 0 0 2px var(--c, var(--ink)) inset; }
+.chip.more { background: #fff; border: 2px dashed var(--edge); }
+.chip.auto i { background: conic-gradient(#e8743b, #96c43e, #4998b4, #a447af, #e8743b); }
+
+/* settings drawer */
+.drawer { position: fixed; z-index: 15; top: 0; right: 0; bottom: 0; width: min(390px, 100%); background: var(--panel); border-left: 1px solid var(--edge); box-shadow: -12px 0 40px rgba(0,0,0,.12); display: flex; flex-direction: column; padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); transform: translateX(105%); transition: transform .25s ease; visibility: hidden; }
+.drawer.open { transform: none; visibility: visible; }
+.drawer header { display: flex; align-items: center; justify-content: space-between; padding-block: 14px 10px; padding-left: 16px; padding-right: max(16px, env(safe-area-inset-right, 0px)); border-bottom: 1px solid var(--edge); }
+.drawer h2 { margin: 0; font-family: var(--font-display); font-weight: 600; font-size: 22px; }
+.drawer .close, .modal .close { font-family: var(--font-display); font-weight: 600; font-size: 16px; border: 0; background: var(--ink); color: #fff; border-radius: 999px; padding: 10px 18px; cursor: pointer; }
+.drawer .body { overflow-y: auto; padding-block: 4px 28px; padding-left: 16px; padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.drawer h3 { font-family: var(--font-display); font-weight: 600; font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: var(--ink-soft); margin: 22px 0 8px; }
+.drawer .note { font-size: 13px; color: var(--ink-soft); line-height: 1.45; margin: 4px 0 6px; }
+.field { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 4px 12px; padding: 7px 0; border-bottom: 1px solid #f1efe9; }
+.field label { font-size: 15px; min-width: 0; }
+.field .val { font-variant-numeric: tabular-nums; color: var(--ink-soft); font-size: 14px; }
+.field input[type=range] { grid-column: 1 / -1; width: 100%; accent-color: var(--ink); }
+.field select { font: inherit; font-size: 15px; padding: 6px 8px; border-radius: 8px; border: 1px solid var(--edge); background: #fff; color: var(--ink); max-width: 200px; }
+.field input[type=checkbox] { width: 22px; height: 22px; accent-color: var(--ink); }
+.shape-row { display: grid; grid-template-columns: 30px 1fr auto; gap: 8px; align-items: center; padding: 6px 0; border-bottom: 1px solid #f1efe9; }
+.shape-row canvas { width: 30px; height: 30px; }
+.shape-row span { font-size: 15px; min-width: 0; }
+.shape-row select { font: inherit; font-size: 14px; padding: 5px 6px; border-radius: 8px; border: 1px solid var(--edge); background: #fff; color: var(--ink); max-width: 170px; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
+.actions button { font-family: var(--font-display); font-weight: 600; font-size: 15px; border: 2px solid var(--ink); background: #fff; color: var(--ink); border-radius: 12px; padding: 10px 14px; cursor: pointer; }
+.actions button.primary { background: var(--ink); color: #fff; }
+
+.modal-back { position: fixed; inset: 0; z-index: 20; background: rgba(43,42,51,.35); display: flex; align-items: center; justify-content: center; padding-block: 16px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.modal { background: #fff; border-radius: 20px; padding: 22px; max-width: 560px; width: 100%; max-height: 100%; overflow-y: auto; box-shadow: 0 12px 40px rgba(0,0,0,.2); font-family: var(--font-display); }
+.modal.wide { max-width: 860px; }
+.modal h2 { margin: 0 0 12px; font-size: 24px; font-weight: 600; text-wrap: balance; }
+.modal h4 { margin: 16px 0 8px; font-size: 14px; text-transform: uppercase; letter-spacing: .07em; color: var(--ink-soft); font-weight: 600; }
+.modal p { margin: 0 0 14px; font-family: var(--font-body); color: var(--ink-soft); line-height: 1.5; }
+.modal .row { display: flex; gap: 12px; justify-content: flex-end; flex-wrap: wrap; }
+.modal .row button { font-family: var(--font-display); font-weight: 600; font-size: 18px; border-radius: 14px; padding: 12px 24px; border: 2px solid var(--ink); background: #fff; color: var(--ink); cursor: pointer; touch-action: manipulation; }
+.modal .row button.primary { background: var(--ink); color: #fff; }
+.modal .head { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.chipgrid { display: flex; flex-wrap: wrap; gap: 6px; }
+.legend { display: grid; grid-template-columns: 40px 1fr; gap: 8px 12px; align-items: center; margin-bottom: 16px; }
+.legend canvas { width: 40px; height: 40px; }
+.legend span { font-size: 17px; }
+.legend span em { font-style: normal; color: var(--ink-soft); font-family: var(--font-body); font-size: 13px; display: block; }
+
+.toast { position: fixed; z-index: 25; left: 50%; transform: translateX(-50%); top: calc(72px + env(safe-area-inset-top, 0px)); font-family: var(--font-display); font-weight: 600; font-size: 16px; background: var(--ink); color: #fff; padding: 8px 16px; border-radius: 999px; pointer-events: none; opacity: 0; transition: opacity .25s; max-width: calc(100% - 32px); text-align: center; }
+.toast.show { opacity: 1; }
+@media (max-width: 700px) {
+  .pill .label { display: none; }
+  .titlechip small { display: none; }
+  .pill button { min-width: 40px; height: 44px; padding: 0 8px; font-size: 15px; }
+  .dock .play { width: 50px; height: 50px; min-width: 50px; }
+  .dock .sep { display: none; }
+  .dock { gap: 0; }
+  .paints { bottom: calc(76px + env(safe-area-inset-bottom, 0px)); justify-content: flex-start; }
+  .chip { height: 36px; font-size: 14px; }
+}
+@media (max-width: 430px) { .titlechip { display: none; } #btn-help { display: none; } }
+@media (prefers-reduced-motion: reduce) { .toast, .drawer { transition: none; } }
+</style>
+
+<div id="stage"><canvas id="canvas"></canvas></div>
+<div class="titlechip">Kandinsky Studio<small>Pick a colour, draw, press play.</small></div>
+
+<div class="tools pill" role="toolbar" aria-label="Tools">
+  <button id="tool-draw" aria-pressed="true" title="Draw (D)"><svg viewBox="0 0 24 24"><path d="M3 17.25V21h3.75L17.8 9.94l-3.75-3.75L3 17.25zM20.7 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg><span class="label">Draw</span></button>
+  <button id="tool-move" aria-pressed="false" title="Move (M)"><svg viewBox="0 0 24 24"><path d="M10 9h4V6h3l-5-5-5 5h3v3zm-1 1H6V7l-5 5 5 5v-3h3v-4zm14 2-5-5v3h-3v4h3v3l5-5zm-9 3h-4v3H7l5 5 5-5h-3v-3z"/></svg><span class="label">Move</span></button>
+  <button id="tool-erase" aria-pressed="false" title="Erase (E)"><svg viewBox="0 0 24 24"><path d="M16.24 3.56 21.19 8.5a2 2 0 0 1 0 2.83L12 20.5H20v2H7.5l-4.7-4.69a2 2 0 0 1 0-2.83L13.41 3.56a2 2 0 0 1 2.83 0zM4.22 16.4 8.32 20.5h.85l3.98-3.98-4.95-4.95-3.98 3.98v.85z"/></svg><span class="label">Erase</span></button>
+  <button id="tool-write" aria-pressed="false" title="Write a word (W)" hidden><span class="aa">Aa</span><span class="label">Write</span></button>
+</div>
+
+<div class="paints"><div class="paints-inner" id="paints" role="toolbar" aria-label="Instruments"></div></div>
+
+<div class="dock pill" role="toolbar" aria-label="Controls">
+  <button id="btn-undo" title="Undo (Ctrl+Z)"><svg viewBox="0 0 24 24"><path d="M12.5 8c-2.65 0-5.05 1-6.9 2.6L2 7v9h9l-3.62-3.62A7.95 7.95 0 0 1 20.48 16l2.37-.78A10.5 10.5 0 0 0 12.5 8z"/></svg><span class="label">Undo</span></button>
+  <button id="btn-slower" title="Slower" aria-label="Slower"><svg viewBox="0 0 24 24"><path d="M5 11h14v2H5z"/></svg></button>
+  <button class="play" id="btn-play" aria-label="Play" title="Play (Space)"><svg viewBox="0 0 24 24" id="play-icon"><path d="M8 5v14l11-7z"/></svg></button>
+  <button id="btn-faster" title="Faster" aria-label="Faster"><svg viewBox="0 0 24 24"><path d="M11 5h2v6h6v2h-6v6h-2v-6H5v-2h6z"/></svg></button>
+  <span class="speed" id="speed-label" title="Speed">Speed 4</span>
+  <span class="sep"></span>
+  <button id="btn-settings" title="Settings"><svg viewBox="0 0 24 24"><path d="M19.4 13a7.6 7.6 0 0 0 0-2l2.1-1.6-2-3.5-2.5 1a7.4 7.4 0 0 0-1.7-1L14.9 3h-4l-.4 2.9a7.4 7.4 0 0 0-1.7 1l-2.5-1-2 3.5L6.4 11a7.6 7.6 0 0 0 0 2l-2.1 1.6 2 3.5 2.5-1a7.4 7.4 0 0 0 1.7 1l.4 2.9h4l.4-2.9a7.4 7.4 0 0 0 1.7-1l2.5 1 2-3.5L19.4 13zM12.9 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z"/></svg><span class="label">Settings</span></button>
+  <button id="btn-help" title="How it works" aria-label="How it works"><svg viewBox="0 0 24 24"><path d="M11 18h2v-2h-2v2zm1-16a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm0 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16zm0-14a4 4 0 0 0-4 4h2a2 2 0 1 1 4 0c0 2-3 1.75-3 5h2c0-2.25 3-2.5 3-5a4 4 0 0 0-4-4z"/></svg></button>
+  <button id="btn-full" title="Full screen" aria-label="Full screen"><svg viewBox="0 0 24 24" id="full-icon"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg></button>
+  <button id="btn-reset" title="Clear the page"><span>Reset</span></button>
+</div>
+
+<aside class="drawer" id="drawer" aria-label="Settings">
+  <header><h2>Settings</h2><button class="close" id="drawer-close">Done</button></header>
+  <div class="body" id="drawer-body"></div>
+</aside>
+
+<div class="modal-back" id="picker" hidden>
+  <div class="modal wide" role="dialog" aria-modal="true" aria-labelledby="picker-title">
+    <div class="head"><h2 id="picker-title">Pick an instrument</h2><button class="close" id="picker-close">Done</button></div>
+    <p>Each instrument has its own colour. Whatever you draw next plays that instrument. Tap a name to hear it.</p>
+    <div id="picker-body"></div>
+  </div>
+</div>
+
+<div class="modal-back" id="confirm" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="confirm-title">
+    <h2 id="confirm-title">Clear the whole page?</h2>
+    <p>Every drawing goes away. You can still press Undo afterwards.</p>
+    <div class="row"><button id="confirm-no">Keep it</button><button class="primary" id="confirm-yes">Clear</button></div>
+  </div>
+</div>
+
+<div class="modal-back" id="help" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="help-title">
+    <h2 id="help-title">How it works</h2>
+    <p>Pick a colour at the bottom. Each colour is an instrument. Draw anywhere, then press play: a line sweeps across the page and plays whatever it touches. Higher on the page is higher notes.</p>
+    <p>With a pressure pen, pressing harder makes a thicker line, and thicker is louder. Tap a drawing to hear it. Use Move and Erase at the top right to fix things.</p>
+    <h4>On the rainbow "Auto" colour, the shape picks the sound</h4>
+    <div class="legend" id="legend"></div>
+    <div class="row"><button class="primary" id="help-close">Got it</button></div>
+  </div>
+</div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+/* =====================================================================
+   KANDINSKY STUDIO: an original draw-to-music toy, built to be extended.
+
+   Places to edit:
+     SCALES        note patterns (which notes high/low on the page play)
+     INSTRUMENTS   how every sound is made (Tone.js synths, no audio files)
+     FAMILY_HUES   the colour family of each instrument group
+     KINDS, RULES  the shapes the app recognises and how
+     AUTO_SETS     what each shape plays when the rainbow "Auto" colour is picked
+     DEFAULTS      every option in the Settings drawer
+
+   How sound is decided: a playhead sweeps left to right and loops.
+     a line plays a note whenever the playhead reaches it at a new pitch (height on the page).
+     a closed shape (circle, triangle, square, star), a dot, or an X plays once, at its centre.
+     loudness comes from pen pressure (if that option is on) or from a shape's size.
+   ===================================================================== */
+
+const SCALES = {
+  pentatonic: { label: "Pentatonic (can't sound wrong)", steps: [0, 2, 4, 7, 9] },
+  major:      { label: "Major (happy)",                  steps: [0, 2, 4, 5, 7, 9, 11] },
+  minor:      { label: "Minor (sad)",                    steps: [0, 2, 3, 5, 7, 8, 10] },
+  blues:      { label: "Blues",                          steps: [0, 3, 5, 6, 7, 10] },
+  dorian:     { label: "Dorian (folk)",                  steps: [0, 2, 3, 5, 7, 9, 10] },
+  japanese:   { label: "Japanese (In)",                  steps: [0, 1, 5, 7, 8] },
+  arabic:     { label: "Arabic (Hijaz)",                 steps: [0, 1, 4, 5, 7, 8, 10] },
+  wholetone:  { label: "Whole tone (dreamy)",            steps: [0, 2, 4, 6, 8, 10] },
+  chromatic:  { label: "Chromatic (every note)",         steps: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11] },
+};
+const KEYS = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+
+/* ---------- INSTRUMENTS ---------- */
+const INSTRUMENTS = {};
+function def(id, label, family, make) { INSTRUMENTS[id] = { label, family, make }; }
+let BUS = null;                                                    // every instrument plays into this
+const poly = (Voice, opts, vol) => { const s = new Tone.PolySynth(Voice, opts); s.maxPolyphony = 32; s.volume.value = vol; s.connect(BUS); return s; };
+const pool = (n, make) => { const v = Array.from({ length: n }, make); let i = 0; return () => v[i++ % n]; };
+const tr = (n, semis) => Tone.Frequency(n).transpose(semis).toNote();
+const hz = (n, semis = 0) => Tone.Frequency(n).transpose(semis).toFrequency();
+const hold = (d, min = .12) => Math.max(min, d);
+function sweeper(n, opts, vol, chain) {                          // mono voices whose pitch we can bend
+  return pool(n, () => { const s = new Tone.Synth(opts); s.volume.value = vol; if (chain) s.chain(...chain(), BUS); else s.connect(BUS); return s; });
+}
+function bend(s, t, pts, v, d) {                                 // pts: [[secondsAfterStart, Hz], ...]
+  s.triggerAttackRelease(pts[0][1], d, t, v);
+  for (let i = 1; i < pts.length; i++) s.frequency.exponentialRampToValueAtTime(pts[i][1], t + pts[i][0]);
+}
+
+// Keys
+def("piano", "Piano", "Pianos", () => { const s = poly(Tone.Synth, { oscillator: { type: "triangle" }, envelope: { attack: .002, decay: .5, sustain: .15, release: .5 } }, -6); return (n, v, r, t, d) => s.triggerAttackRelease(n, hold(d), t, v); });
+def("organ", "Organ", "Pianos", () => { const s = poly(Tone.Synth, { oscillator: { type: "custom", partials: [1, .6, .4, .25, .15, .1] }, envelope: { attack: .02, decay: .1, sustain: .9, release: .15 } }, -16); return (n, v, r, t, d) => s.triggerAttackRelease(n, hold(d, .2), t, v); });
+def("epiano", "Keyboard", "Pianos", () => { const s = poly(Tone.FMSynth, { harmonicity: 3, modulationIndex: 3.5, envelope: { attack: .002, decay: 1, sustain: .2, release: .8 }, modulationEnvelope: { attack: .002, decay: .4, sustain: 0 } }, -10); return (n, v, r, t, d) => s.triggerAttackRelease(n, hold(d, .3), t, v); });
+// Mallets & bells
+def("marimba", "Wooden xylophone", "Bells and xylophones", () => { const s = poly(Tone.FMSynth, { harmonicity: 4, modulationIndex: 2, oscillator: { type: "sine" }, envelope: { attack: .001, decay: .5, sustain: 0, release: .5 }, modulationEnvelope: { attack: .001, decay: .1, sustain: 0 } }, -4); return (n, v, r, t) => s.triggerAttackRelease(n, .4, t, v); });
+def("xylophone", "Xylophone", "Bells and xylophones", () => { const s = poly(Tone.FMSynth, { harmonicity: 3.5, modulationIndex: 4, envelope: { attack: .001, decay: .25, sustain: 0, release: .25 }, modulationEnvelope: { attack: .001, decay: .05, sustain: 0 } }, -6); return (n, v, r, t) => s.triggerAttackRelease(tr(n, 12), .2, t, v); });
+def("kalimba", "Thumb piano", "Bells and xylophones", () => { const s = poly(Tone.FMSynth, { harmonicity: 8, modulationIndex: 1.5, envelope: { attack: .001, decay: .9, sustain: 0, release: .9 }, modulationEnvelope: { attack: .001, decay: .05, sustain: 0 } }, -4); return (n, v, r, t) => s.triggerAttackRelease(n, .6, t, v); });
+def("bells", "Bells", "Bells and xylophones", () => { const s = poly(Tone.FMSynth, { harmonicity: 3.01, modulationIndex: 14, envelope: { attack: .001, decay: 1.2, sustain: 0, release: 1.2 }, modulationEnvelope: { attack: .002, decay: .3, sustain: 0, release: .2 } }, -14); return (n, v, r, t) => s.triggerAttackRelease(tr(n, 12), 1, t, v); });
+def("glock", "Little bells", "Bells and xylophones", () => { const s = poly(Tone.FMSynth, { harmonicity: 7.1, modulationIndex: 6, envelope: { attack: .001, decay: .9, sustain: 0, release: .9 }, modulationEnvelope: { attack: .001, decay: .15, sustain: 0 } }, -14); return (n, v, r, t) => s.triggerAttackRelease(tr(n, 24), .6, t, v); });
+def("chime", "Wind chimes", "Bells and xylophones", () => { const s = poly(Tone.FMSynth, { harmonicity: 5.07, modulationIndex: 3, envelope: { attack: .001, decay: 2.2, sustain: 0, release: 2 } }, -16); return (n, v, r, t) => s.triggerAttackRelease(tr(n, 24), 1.5, t, v); });
+def("steeldrum", "Island drum", "Bells and xylophones", () => { const s = poly(Tone.FMSynth, { harmonicity: 2.5, modulationIndex: 5, envelope: { attack: .003, decay: .6, sustain: 0, release: .5 }, modulationEnvelope: { attack: .002, decay: .2, sustain: 0 } }, -8); return (n, v, r, t) => s.triggerAttackRelease(tr(n, 12), .5, t, v); });
+// Strings
+def("harp", "Harp", "Guitars and violins", () => { const s = poly(Tone.MonoSynth, { oscillator: { type: "triangle" }, filter: { type: "lowpass", Q: 1 }, envelope: { attack: .002, decay: 1.2, sustain: 0, release: 1 }, filterEnvelope: { attack: .002, decay: .4, sustain: .1, baseFrequency: 900, octaves: 3 } }, -4); return (n, v, r, t) => s.triggerAttackRelease(n, 1, t, v); });
+def("guitar", "Guitar", "Guitars and violins", () => { const s = poly(Tone.MonoSynth, { oscillator: { type: "sawtooth" }, filter: { type: "lowpass", Q: 2 }, envelope: { attack: .002, decay: .9, sustain: 0, release: .6 }, filterEnvelope: { attack: .002, decay: .25, sustain: .05, baseFrequency: 300, octaves: 3.5 } }, -10); return (n, v, r, t) => s.triggerAttackRelease(tr(n, -12), .8, t, v); });
+def("strings", "Violins", "Guitars and violins", () => { const s = poly(Tone.Synth, { oscillator: { type: "fatsawtooth", count: 3, spread: 18 }, envelope: { attack: .08, decay: .2, sustain: .8, release: .6 } }, -18); return (n, v, r, t, d) => s.triggerAttackRelease(n, hold(d, .3), t, v); });
+def("pizzicato", "Plucky violin", "Guitars and violins", () => { const s = poly(Tone.Synth, { oscillator: { type: "fatsawtooth", count: 2, spread: 10 }, envelope: { attack: .002, decay: .18, sustain: 0, release: .15 } }, -12); return (n, v, r, t) => s.triggerAttackRelease(n, .15, t, v); });
+// Voices
+def("ooh", "Singing (ooh)", "Singing", () => { const f = new Tone.Filter(900, "bandpass", -12); const vib = new Tone.Vibrato(5, .12); vib.chain(f, BUS); const s = new Tone.PolySynth(Tone.FMSynth, { harmonicity: 1, modulationIndex: 1.2, envelope: { attack: .06, decay: .2, sustain: .6, release: .5 } }); s.volume.value = 4; s.connect(vib); return (n, v, r, t, d) => s.triggerAttackRelease(n, hold(d, .35), t, v); });
+def("choir", "Singing group (laa)", "Singing", () => { const f = new Tone.Filter(1400, "lowpass"); f.connect(BUS); const s = new Tone.PolySynth(Tone.Synth, { oscillator: { type: "fatsawtooth", count: 3, spread: 25 }, envelope: { attack: .12, decay: .3, sustain: .7, release: .8 } }); s.volume.value = -12; s.connect(f); return (n, v, r, t, d) => s.triggerAttackRelease(n, hold(d, .45), t, v); });
+def("bebop", "Silly singing", "Singing", () => { const f = new Tone.Filter(1800, "lowpass"); f.connect(BUS); const s = new Tone.PolySynth(Tone.Synth, { oscillator: { type: "square" }, envelope: { attack: .005, decay: .12, sustain: .2, release: .1 } }); s.volume.value = -14; s.connect(f); return (n, v, r, t) => s.triggerAttackRelease(n, .14, t, v); });
+def("robot", "Robot", "Singing", () => { const s = poly(Tone.FMSynth, { harmonicity: 3.5, modulationIndex: 20, modulation: { type: "square" }, envelope: { attack: .01, decay: .1, sustain: .5, release: .1 } }, -18); return (n, v, r, t, d) => s.triggerAttackRelease(n, hold(d, .15), t, v); });
+// Winds
+def("flute", "Flute", "Horns and whistles", () => { const vib = new Tone.Vibrato(5.5, .08); vib.connect(BUS); const s = new Tone.PolySynth(Tone.Synth, { oscillator: { type: "sine" }, envelope: { attack: .06, decay: .1, sustain: .8, release: .25 } }); s.volume.value = -6; s.connect(vib); return (n, v, r, t, d) => s.triggerAttackRelease(tr(n, 12), hold(d, .2), t, v); });
+def("clarinet", "Recorder", "Horns and whistles", () => { const f = new Tone.Filter(1300, "lowpass"); f.connect(BUS); const s = new Tone.PolySynth(Tone.Synth, { oscillator: { type: "square" }, envelope: { attack: .03, decay: .1, sustain: .8, release: .15 } }); s.volume.value = -16; s.connect(f); return (n, v, r, t, d) => s.triggerAttackRelease(n, hold(d, .2), t, v); });
+def("trumpet", "Trumpet", "Horns and whistles", () => { const s = poly(Tone.MonoSynth, { oscillator: { type: "sawtooth" }, envelope: { attack: .03, decay: .1, sustain: .7, release: .1 }, filterEnvelope: { attack: .03, decay: .2, sustain: .5, baseFrequency: 600, octaves: 3 } }, -16); return (n, v, r, t, d) => s.triggerAttackRelease(n, hold(d, .18), t, v); });
+def("tuba", "Tuba", "Horns and whistles", () => { const s = poly(Tone.MonoSynth, { oscillator: { type: "sawtooth" }, filter: { type: "lowpass", Q: 1 }, envelope: { attack: .05, decay: .2, sustain: .7, release: .2 }, filterEnvelope: { attack: .05, decay: .2, sustain: .4, baseFrequency: 150, octaves: 2 } }, -8); return (n, v, r, t, d) => s.triggerAttackRelease(tr(n, -12), hold(d, .2), t, v); });
+def("whistle", "Whistle", "Horns and whistles", () => { const p = sweeper(4, { oscillator: { type: "sine" }, envelope: { attack: .02, decay: .1, sustain: .8, release: .1 } }, -8); return (n, v, r, t, d) => { const f = hz(n, 24); bend(p(), t, [[0, f * .88], [.08, f]], v, hold(d, .2)); }; });
+// Bass
+def("bass", "Low guitar", "Low sounds", () => { const s = poly(Tone.MonoSynth, { oscillator: { type: "sawtooth" }, filter: { Q: 2, type: "lowpass" }, envelope: { attack: .01, decay: .25, sustain: .4, release: .3 }, filterEnvelope: { attack: .01, decay: .2, sustain: .3, baseFrequency: 260, octaves: 2.6 } }, -6); return (n, v, r, t, d) => s.triggerAttackRelease(tr(n, -12), hold(d, .2), t, v); });
+def("synthbass", "Deep buzz", "Low sounds", () => { const s = poly(Tone.MonoSynth, { oscillator: { type: "square" }, filter: { Q: 4, type: "lowpass" }, envelope: { attack: .005, decay: .2, sustain: .3, release: .1 }, filterEnvelope: { attack: .005, decay: .15, sustain: .2, baseFrequency: 200, octaves: 3.5 } }, -12); return (n, v, r, t, d) => s.triggerAttackRelease(tr(n, -12), hold(d, .15), t, v); });
+// Synth & game
+def("chip", "Video game", "Space and games", () => { const s = poly(Tone.Synth, { oscillator: { type: "square" }, envelope: { attack: .001, decay: .1, sustain: .4, release: .05 } }, -20); return (n, v, r, t, d) => s.triggerAttackRelease(n, hold(d, .1), t, v); });
+def("chip2", "Beeps", "Space and games", () => { const s = poly(Tone.Synth, { oscillator: { type: "pulse", width: .2 }, envelope: { attack: .001, decay: .08, sustain: .3, release: .05 } }, -20); return (n, v, r, t, d) => s.triggerAttackRelease(tr(n, 12), hold(d, .08), t, v); });
+def("pad", "Space sound", "Space and games", () => { const s = poly(Tone.Synth, { oscillator: { type: "fatsine", count: 3, spread: 30 }, envelope: { attack: .3, decay: .5, sustain: .8, release: 1.5 } }, -12); return (n, v, r, t, d) => s.triggerAttackRelease(n, hold(d, .5), t, v); });
+def("laser", "Laser", "Space and games", () => { const p = sweeper(6, { oscillator: { type: "sawtooth" }, envelope: { attack: .001, decay: .2, sustain: 0, release: .05 } }, -18); return (n, v, r, t) => { const f = hz(n, 12); bend(p(), t, [[0, f * 4], [.2, f / 2]], v, .2); }; });
+def("boing", "Boing", "Space and games", () => { const p = sweeper(6, { oscillator: { type: "sine" }, envelope: { attack: .005, decay: .3, sustain: 0, release: .05 } }, -4); return (n, v, r, t) => { const f = hz(n); bend(p(), t, [[0, f / 2], [.25, f * 2]], v, .3); }; });
+def("zap", "Zap", "Space and games", () => { const p = sweeper(4, { oscillator: { type: "square" }, envelope: { attack: .001, decay: .4, sustain: 0, release: .05 } }, -16); return (n, v, r, t) => { const f = hz(n, 24); bend(p(), t, [[0, f * 2], [.4, 40]], v, .4); }; });
+// Funny & animals
+def("meow", "Cat", "Animals", () => { const p = sweeper(4, { oscillator: { type: "sawtooth" }, envelope: { attack: .04, decay: .2, sustain: .6, release: .15 } }, -10, () => [new Tone.Filter({ type: "bandpass", frequency: 1300, Q: 2.5 })]); return (n, v, r, t) => { const f = hz(n, 12); bend(p(), t, [[0, f], [.18, f * 1.5], [.4, f * .85]], v, .4); }; });
+def("tweet", "Bird", "Animals", () => { const p = sweeper(6, { oscillator: { type: "sine" }, envelope: { attack: .002, decay: .05, sustain: .7, release: .02 } }, -8); return (n, v, r, t) => { const f = hz(n, 24); bend(p(), t, [[0, f], [.06, f * 1.6]], v, .07); bend(p(), t + .1, [[0, f * 1.1], [.06, f * 1.8]], v, .07); }; });
+def("quack", "Duck", "Animals", () => { const p = sweeper(4, { oscillator: { type: "sawtooth" }, envelope: { attack: .005, decay: .1, sustain: .5, release: .05 } }, -6, () => [new Tone.Filter({ type: "bandpass", frequency: 1100, Q: 6 })]); return (n, v, r, t) => { const f = hz(n); bend(p(), t, [[0, f], [.15, f * .7]], v, .16); }; });
+def("moo", "Cow", "Animals", () => { const p = sweeper(3, { oscillator: { type: "sawtooth" }, envelope: { attack: .12, decay: .2, sustain: .8, release: .3 } }, -4, () => [new Tone.Filter({ type: "lowpass", frequency: 650, Q: 3 })]); return (n, v, r, t) => { const f = hz(n, -12); bend(p(), t, [[0, f * 1.05], [.3, f * 1.12], [.8, f * .85]], v, .8); }; });
+def("ribbit", "Frog", "Animals", () => { const p = sweeper(4, { oscillator: { type: "square" }, envelope: { attack: .003, decay: .04, sustain: .6, release: .02 } }, -16, () => [new Tone.Filter({ type: "lowpass", frequency: 900 })]); return (n, v, r, t) => { const f = hz(n, -12); bend(p(), t, [[0, f], [.05, f * 1.3]], v, .06); bend(p(), t + .09, [[0, f * 1.1], [.06, f * 1.4]], v, .08); }; });
+// Drums (on a drum kit, the row picks which drum: bottom = kick ... top = cymbal)
+function kit(parts) { return () => { const ps = parts.map(m => m()); return (n, v, r, t) => ps[Math.min(ps.length - 1, Math.floor(r * ps.length))](n, v, t); }; }
+const KICK = () => { const s = new Tone.MembraneSynth({ octaves: 6, envelope: { decay: .4 } }); s.connect(BUS); return (n, v, t) => s.triggerAttackRelease("C1", .4, t, v); };
+const SNARE = () => { const s = new Tone.NoiseSynth({ noise: { type: "white" }, envelope: { attack: .001, decay: .18, sustain: 0 } }); s.volume.value = -10; s.connect(BUS); return (n, v, t) => s.triggerAttackRelease(.18, t, v); };
+const HAT = (decay = .06) => () => { const s = new Tone.MetalSynth({ envelope: { decay }, harmonicity: 5.1, resonance: 4000, octaves: 1.5 }); s.volume.value = -22; s.connect(BUS); return (n, v, t) => s.triggerAttackRelease("C6", decay, t, v); };
+const CLAP = () => { const f = new Tone.Filter(1400, "bandpass"); f.connect(BUS); const s = new Tone.NoiseSynth({ envelope: { attack: .001, decay: .09, sustain: 0 } }); s.volume.value = -6; s.connect(f); return (n, v, t) => { s.triggerAttackRelease(.02, t, v); s.triggerAttackRelease(.02, t + .015, v); s.triggerAttackRelease(.09, t + .03, v); }; };
+const KICK808 = () => { const s = new Tone.MembraneSynth({ pitchDecay: .08, octaves: 8, envelope: { decay: .9, sustain: 0 } }); s.connect(BUS); return (n, v, t) => s.triggerAttackRelease("A0", .8, t, v); };
+const COWBELL = () => { const f = new Tone.Filter(900, "bandpass"); f.connect(BUS); const s = new Tone.PolySynth(Tone.Synth, { oscillator: { type: "square" }, envelope: { attack: .001, decay: .25, sustain: 0, release: .1 } }); s.volume.value = -20; s.connect(f); return (n, v, t) => s.triggerAttackRelease([545, 815], .2, t, v); };
+def("drums", "Drums", "Drums", kit([KICK, SNARE, HAT(.06), HAT(.3)])); INSTRUMENTS.drums.drumNames = ["Kick", "Snare", "Hi-hat", "Open hat"];
+def("kit808", "Dance drums", "Drums", kit([KICK808, CLAP, HAT(.05), COWBELL])); INSTRUMENTS.kit808.drumNames = ["Kick", "Clap", "Hi-hat", "Cowbell"];
+def("claps", "Clapping", "Drums", () => { const c = CLAP(); return (n, v, r, t) => c(n, v, t); });
+def("shaker", "Shaker", "Drums", () => { const f = new Tone.Filter(6000, "highpass"); f.connect(BUS); const s = new Tone.NoiseSynth({ envelope: { attack: .02, decay: .07, sustain: 0 } }); s.volume.value = -10; s.connect(f); return (n, v, r, t) => s.triggerAttackRelease(.08, t, v); });
+def("cowbell", "Cowbell", "Drums", () => { const c = COWBELL(); return (n, v, r, t) => c(n, v, t); });
+def("bongos", "Hand drums", "Drums", () => { const s = new Tone.MembraneSynth({ pitchDecay: .02, octaves: 1.5, envelope: { attack: .001, decay: .18, sustain: 0 } }); s.volume.value = -2; s.connect(BUS); return (n, v, r, t) => s.triggerAttackRelease(n, .15, t, v); });
+def("woodblock", "Wood knock", "Drums", () => { const s = new Tone.MembraneSynth({ pitchDecay: .008, octaves: 2, envelope: { attack: .001, decay: .12, sustain: 0 } }); s.volume.value = -4; s.connect(BUS); return (n, v, r, t) => s.triggerAttackRelease(tr(n, 12), .1, t, v); });
+def("timpani", "Big drum", "Drums", () => { const s = new Tone.MembraneSynth({ pitchDecay: .03, octaves: 1.2, envelope: { attack: .002, decay: 1.4, sustain: 0, release: 1 } }); s.connect(BUS); return (n, v, r, t) => s.triggerAttackRelease(tr(n, -12), 1.2, t, v); });
+// Big hits (good for X)
+def("crash", "Crash!", "Big noises", () => { const f = new Tone.Filter(3000, "highpass"); f.connect(BUS); const s = new Tone.NoiseSynth({ envelope: { attack: .001, decay: 1.6, sustain: 0 } }); s.volume.value = -12; s.connect(f); const m = new Tone.MetalSynth({ envelope: { decay: 1.4 }, harmonicity: 3.1, resonance: 3000 }); m.volume.value = -26; m.connect(BUS); return (n, v, r, t) => { s.triggerAttackRelease(1.6, t, v); m.triggerAttackRelease("C4", 1.4, t, v); }; });
+def("gong", "Gong", "Big noises", () => { const s = poly(Tone.FMSynth, { harmonicity: 1.41, modulationIndex: 12, envelope: { attack: .01, decay: 4, sustain: 0, release: 3 }, modulationEnvelope: { attack: .2, decay: 2, sustain: 0 } }, -10); return (n, v, r, t) => s.triggerAttackRelease(tr(n, -12), 3, t, v); });
+def("thunder", "Thunder", "Big noises", () => { const f = new Tone.Filter(380, "lowpass"); f.connect(BUS); const s = new Tone.NoiseSynth({ noise: { type: "brown" }, envelope: { attack: .06, decay: 2.6, sustain: 0 } }); s.volume.value = 6; s.connect(f); return (n, v, r, t) => s.triggerAttackRelease(2.6, t, v); });
+def("boom", "Boom!", "Big noises", () => { const k = new Tone.MembraneSynth({ pitchDecay: .2, octaves: 5, envelope: { decay: 1.6, sustain: 0 } }); k.connect(BUS); const f = new Tone.Filter(600, "lowpass"); f.connect(BUS); const s = new Tone.NoiseSynth({ noise: { type: "brown" }, envelope: { attack: .001, decay: .9, sustain: 0 } }); s.connect(f); return (n, v, r, t) => { k.triggerAttackRelease("C0", 1.5, t, v); s.triggerAttackRelease(.9, t, v); }; });
+def("airhorn", "Honk!", "Big noises", () => { const s = poly(Tone.Synth, { oscillator: { type: "sawtooth" }, envelope: { attack: .01, decay: .1, sustain: .9, release: .1 } }, -22); return (n, v, r, t) => s.triggerAttackRelease([n, tr(n, 4), tr(n, 7)], .55, t, v); });
+def("tada", "Ta-da!", "Big noises", () => { const s = poly(Tone.MonoSynth, { oscillator: { type: "sawtooth" }, envelope: { attack: .01, decay: .2, sustain: .6, release: .3 }, filterEnvelope: { attack: .01, decay: .2, sustain: .5, baseFrequency: 900, octaves: 2 } }, -18); return (n, v, r, t) => { [0, 4, 7, 12].forEach((iv, k) => s.triggerAttackRelease(tr(n, iv), k === 3 ? .7 : .1, t + k * .07, v)); }; });
+def("silence", "Quiet", "Other", () => () => {});
+
+
+
+/* ---------- colours: each family gets a hue; instruments in it spread around that hue ---------- */
+const FAMILY_HUES = { "Pianos": 212, "Bells and xylophones": 44, "Guitars and violins": 12, "Singing": 328, "Horns and whistles": 168, "Low sounds": 268, "Space and games": 190, "Animals": 98, "Drums": 26, "Big noises": 352, "Other": 0 };
+(function assignColors() {
+  const fam = {};
+  Object.entries(INSTRUMENTS).forEach(([id, d]) => (fam[d.family] = fam[d.family] || []).push(id));
+  Object.entries(fam).forEach(([f, ids]) => ids.forEach((id, i) => {
+    const n = ids.length, hue = FAMILY_HUES[f] + (i - (n - 1) / 2) * Math.min(14, 70 / n);
+    const light = [46, 36, 56][i % 3], sat = f === "Other" ? 0 : 68 - (i % 2) * 10;
+    INSTRUMENTS[id].color = `hsl(${(hue + 360) % 360} ${sat}% ${light}%)`;
+  }));
+})();
+const instColor = id => (INSTRUMENTS[id] || INSTRUMENTS.piano).color;
+
+/* ---------- KINDS and RULES ---------- */
+const KINDS = {
+  dot:      { name: "Dot",      how: "a quick tap" },
+  circle:   { name: "Circle",   how: "any round loop" },
+  triangle: { name: "Triangle", how: "three corners" },
+  square:   { name: "Square",   how: "four corners" },
+  star:     { name: "Star",     how: "five or more corners" },
+  x:        { name: "X",        how: "two crossing lines, one right after the other" },
+  line:     { name: "Line",     how: "any open stroke: straight, curvy or zigzag" },
+  word:     { name: "Word",     how: "press Write (Aa) at the top and write a word" },
+};
+const KIND_ORDER = Object.keys(KINDS);
+const POINT_KINDS = new Set(["dot", "circle", "triangle", "square", "star", "x"]);
+const RULES = [   // first match wins; i comes from measure()
+  ["circle",   i => i.closed && (i.corners <= 1 || (i.corners === 2 && i.roundness > .8))],
+  ["triangle", i => i.closed && i.corners === 3],
+  ["square",   i => i.closed && i.corners === 4],
+  ["star",     i => i.closed && i.corners >= 5],
+  ["circle",   i => i.closed],
+  ["line",     () => true],
+];
+
+/* ---------- AUTO_SETS: on the rainbow colour, what each shape plays ---------- */
+const AUTO_SETS = [
+  { name: "Classic",   play: { dot: "marimba", circle: "ooh", triangle: "drums", square: "piano", star: "glock", x: "crash", line: "bass", word: "ooh" } },
+  { name: "Concert",   play: { dot: "harp", circle: "choir", triangle: "timpani", square: "bells", star: "chime", x: "gong", line: "strings", word: "choir" } },
+  { name: "Party",     play: { dot: "chip", circle: "bebop", triangle: "kit808", square: "robot", star: "kalimba", x: "airhorn", line: "synthbass", word: "bebop" } },
+  { name: "Space",     play: { dot: "boing", circle: "pad", triangle: "kit808", square: "robot", star: "glock", x: "zap", line: "laser", word: "robot" } },
+  { name: "Farm",      play: { dot: "meow", circle: "moo", triangle: "quack", square: "ribbit", star: "tweet", x: "tada", line: "whistle", word: "tweet" } },
+  { name: "Jungle",    play: { dot: "woodblock", circle: "ooh", triangle: "bongos", square: "marimba", star: "tweet", x: "thunder", line: "flute", word: "flute" } },
+  { name: "Island",    play: { dot: "kalimba", circle: "ooh", triangle: "bongos", square: "steeldrum", star: "chime", x: "tada", line: "steeldrum", word: "steeldrum" } },
+];
+
+const SPEEDS = [14, 11, 8.5, 6.5, 5, 4, 3, 2.2];   // seconds for one sweep, slow to fast
+
+const DEFAULTS = {
+  scale: "pentatonic", key: "C", octave: 3, notes: 15, speed: 4, loop: true,
+  pressure: true, brush: 6, faces: true, sizeLoud: true, sizeLong: true, previewOnDraw: true, liveDraw: false,
+  autoSet: 0, autoMap: null, current: "auto",
+  favorites: ["auto", "ooh", "drums", "bass", "marimba", "piano", "guitar", "strings", "bells", "flute", "meow", "laser", "crash"],
+  reverb: .25, echo: 0, volume: 0, sayWords: true,
+};
+
+/* =====================================================================
+   ENGINE
+   ===================================================================== */
+function load(key, fallback) { try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; } catch (e) { return fallback; } }
+function save(key, v) { try { localStorage.setItem(key, JSON.stringify(v)); } catch (e) {} }
+const S = load("ks3-settings", {});
+function fillDefaults() {
+  Object.keys(DEFAULTS).forEach(k => { if (S[k] === undefined || S[k] === null) S[k] = structuredClone(DEFAULTS[k]); });
+  if (!AUTO_SETS[S.autoSet]) S.autoSet = 0;
+  if (!S.autoMap) S.autoMap = { ...AUTO_SETS[S.autoSet].play };
+  KIND_ORDER.forEach(k => { if (!INSTRUMENTS[S.autoMap[k]]) S.autoMap[k] = AUTO_SETS[0].play[k]; });
+  S.favorites = S.favorites.filter(f => f === "auto" || INSTRUMENTS[f]);
+  if (S.current !== "auto" && !INSTRUMENTS[S.current]) S.current = "auto";
+}
+fillDefaults();
+
+const canvas = document.getElementById("canvas"), ctx = canvas.getContext("2d");
+const $ = id => document.getElementById(id);
+let W = 0, H = 0, DPR = 1;
+const state = { items: [], history: [], tool: "draw", current: null, nextId: 1, playing: false, version: 0, drag: null, sawPressure: false };
+let audioReady = false, audioStarting = null, FX = null;
+const instCache = {};
+
+function resize() {
+  DPR = Math.min(window.devicePixelRatio || 1, 2.5);
+  const r = canvas.getBoundingClientRect(), oldW = W, oldH = H;
+  W = r.width; H = r.height; canvas.width = Math.round(W * DPR); canvas.height = Math.round(H * DPR);
+  if (oldW && oldH && (oldW !== W || oldH !== H)) {
+    const sx = W / oldW, sy = H / oldH;
+    state.items.forEach(it => { it.strokes.forEach(st => st.forEach(p => { p.x *= sx; p.y *= sy; })); finalize(it); });
+  }
+  state.version++;
+}
+window.addEventListener("resize", resize);
+
+/* ---------- pitch: height on the page -> note of the scale ---------- */
+let NOTES = [];
+function buildNotes() {
+  const steps = SCALES[S.scale].steps, root = 12 * (S.octave + 1) + KEYS.indexOf(S.key);
+  NOTES = [];
+  for (let i = 0; NOTES.length < S.notes; i++) { const midi = root + 12 * Math.floor(i / steps.length) + steps[i % steps.length]; NOTES.push(KEYS[midi % 12] + (Math.floor(midi / 12) - 1)); }
+  state.version++;
+}
+const TOP = () => H * .08, SPAN = () => H * .74;            // the band of the page that holds the notes
+const level = y => 1 - Math.max(0, Math.min(1, (y - TOP()) / SPAN()));   // 0 bottom .. 1 top
+const noteIndex = y => Math.round(level(y) * (S.notes - 1));
+
+/* ---------- audio ---------- */
+function buildAudio() {
+  if (FX) return;
+  const limiter = new Tone.Limiter(-1).toDestination();
+  const master = new Tone.Volume(S.volume).connect(limiter);
+  const bus = new Tone.Gain(1).connect(master);
+  const reverb = new Tone.Reverb({ decay: 2.8, wet: 1 }); reverb.connect(master);
+  const revSend = new Tone.Gain(S.reverb).connect(reverb); bus.connect(revSend);
+  const delay = new Tone.FeedbackDelay({ delayTime: .28, feedback: .35, wet: 1 }); delay.connect(master);
+  const delSend = new Tone.Gain(S.echo).connect(delay); bus.connect(delSend);
+  FX = { master, revSend, delSend }; BUS = bus; audioReady = true;
+}
+/* Browsers only let sound start during a tap or click. A pen touching down does not count
+   (only lifting it does), so we ask again on every tap, click and key press instead of asking once. */
+function ensureAudio() {
+  if (typeof Tone === "undefined") { toast("The sound library didn't load. Check the internet connection and reload."); return Promise.resolve(false); }
+  try { buildAudio(); } catch (e) { console.warn(e); return Promise.resolve(false); }
+  if (Tone.context.state === "running") return Promise.resolve(true);
+  try { Tone.context.resume(); } catch (e) {}
+  return new Promise(res => {
+    const t0 = performance.now();
+    (function wait() { if (Tone.context.state === "running") res(true); else if (performance.now() - t0 > 1500) res(false); else setTimeout(wait, 30); })();
+  });
+}
+["pointerup", "click", "keydown", "touchend"].forEach(ev => document.addEventListener(ev, () => {
+  if (typeof Tone !== "undefined" && Tone.context.state !== "running") { try { buildAudio(); Tone.context.resume(); } catch (e) {} }
+}, true));
+function inst(id) {
+  if (!instCache[id]) { try { instCache[id] = INSTRUMENTS[id].make(); } catch (e) { console.warn("instrument", id, e); instCache[id] = () => {}; } }
+  return instCache[id];
+}
+function applyFx() { if (!FX) return; FX.master.volume.rampTo(S.volume, .05); FX.revSend.gain.rampTo(S.reverb, .05); FX.delSend.gain.rampTo(S.echo, .05); }
+
+/* ---------- what each drawing plays ---------- */
+const instOf = it => it.inst === "auto" ? S.autoMap[it.kind] : it.inst;
+const loopSec = () => SPEEDS[S.speed];
+function events(it) {
+  if (it._evV === state.version) return it._ev;
+  const ev = [], loudFromPen = S.pressure && it.pen;
+  if (it.kind === "word") {
+    // each letter is a note, spread across the word; the letters make a little tune around the word's height
+    const letters = (it.text || "").replace(/[^a-z0-9]/gi, "").toLowerCase(), n = letters.length || 1, base = noteIndex(it.cy), w = it.maxX - it.minX;
+    for (let i = 0; i < letters.length; i++) {
+      const off = (letters.charCodeAt(i) % 7) - 3;
+      ev.push({ x: it.minX + (i + .5) / n * w, y: it.cy, idx: Math.max(0, Math.min(S.notes - 1, base + off)), vel: .75, dur: Math.max(.2, Math.min(1.2, w / n / W * loopSec() * 1.05)), say: i === 0, letter: i });
+    }
+  } else if (POINT_KINDS.has(it.kind)) {
+    const size = Math.max(it.maxX - it.minX, it.maxY - it.minY);
+    const vel = loudFromPen ? .2 + .8 * it.avgP : S.sizeLoud && it.kind !== "dot" ? Math.max(.35, Math.min(1, size / (Math.min(W, H) * .3))) : .8;
+    const dur = S.sizeLong && it.kind !== "dot" ? Math.max(.2, Math.min(2.5, (it.maxX - it.minX) / W * loopSec())) : .3;
+    ev.push({ x: it.cx, y: it.cy, idx: noteIndex(it.cy), vel, dur });
+  } else {
+    // one note each time the line reaches a new pitch, plus a repeat if it stays level for a while
+    const pts = it.sorted, minGap = Math.max(16, W / 45), holdGap = W / 5;
+    let last = null;
+    for (const p of pts) {
+      const idx = noteIndex(p.y);
+      if (!last || (idx !== last.idx && p.x - last.x >= minGap) || p.x - last.x >= holdGap) {
+        last = { x: p.x, y: p.y, idx, vel: loudFromPen ? .15 + .85 * (p.p ?? .5) : .8, dur: .25 };
+        ev.push(last);
+      }
+    }
+    // each note rings until the next one starts (legato), so long, smooth strokes sound long
+    const endX = it.maxX + minGap;
+    for (let i = 0; i < ev.length; i++) ev[i].dur = Math.max(.25, Math.min(3, ((ev[i + 1] ? ev[i + 1].x : endX) - ev[i].x) / W * loopSec() * 1.05));
+  }
+  it._ev = ev; it._evV = state.version;
+  return ev;
+}
+function playEvent(it, ev, time) {
+  const id = instOf(it); if (!id) return;
+  try { inst(id)(NOTES[ev.idx], Math.min(1, ev.vel), level(ev.y), time, ev.dur); } catch (e) { console.warn(e); }
+  if (ev.say && S.sayWords) Tone.Draw.schedule(() => say(it.text), time);
+  Tone.Draw.schedule(() => bump(it, ev), time);
+}
+function preview(it) {
+  ensureAudio().then(ok => {
+    if (!ok) return;
+    const evs = events(it); if (!evs.length) return;
+    const t0 = Tone.now() + .05, x0 = evs[0].x;
+    evs.forEach(ev => playEvent(it, ev, t0 + (ev.x - x0) / W * loopSec()));
+  });
+}
+
+/* ---------- the playhead: schedules notes a little ahead so timing is exact ---------- */
+const play = { t0: 0, cursor: 0 };
+function scheduleAhead() {
+  if (!state.playing || !audioReady) return;
+  const now = Tone.now(), horizon = now + .15, D = loopSec();
+  while (play.cursor < horizon) {
+    const k = Math.floor((play.cursor - play.t0) / D), loopStart = play.t0 + k * D, loopEnd = loopStart + D;
+    if (!S.loop && k >= 1) { setPlaying(false); return; }
+    const end = Math.min(horizon, loopEnd), f0 = (play.cursor - loopStart) / D, f1 = (end - loopStart) / D;
+    state.items.forEach(it => events(it).forEach(ev => { const f = ev.x / W; if (f >= f0 && f < f1) playEvent(it, ev, loopStart + f * D); }));
+    play.cursor = end;
+  }
+}
+function setPlaying(on) {
+  state.playing = on;
+  if (on && audioReady) { play.t0 = Tone.now() + .08; play.cursor = play.t0; }
+  $("play-icon").innerHTML = on ? '<path d="M7 5h4v14H7zM13 5h4v14h-4z"/>' : '<path d="M8 5v14l11-7z"/>';
+  $("btn-play").setAttribute("aria-label", on ? "Stop" : "Play");
+}
+function changeSpeed(i) {
+  i = Math.max(0, Math.min(SPEEDS.length - 1, i));
+  if (state.playing && audioReady) {                      // keep the playhead where it is
+    const now = Tone.now(), f = (((now - play.t0) / loopSec()) % 1 + 1) % 1;
+    S.speed = i; play.t0 = now - f * loopSec(); play.cursor = now;
+  } else S.speed = i;
+  changed("speed");
+}
+
+/* ---------- input (Pointer Events: mouse, touch and pen) ---------- */
+const stage = $("stage");
+function pt(e) {
+  const r = canvas.getBoundingClientRect(), pen = e.pointerType === "pen";
+  let p = .5;
+  if (pen && e.pressure > 0) { p = e.pressure; if (p !== .5 && !state.sawPressure) { state.sawPressure = true; if (S.pressure) toast("Pen pressure is on: press harder for thicker, louder lines"); } }
+  return { x: e.clientX - r.left, y: e.clientY - r.top, p, pen };
+}
+/* A straight stroke might be the first half of an X, so it waits a moment before it counts. */
+const X_WAIT = 1200;
+function commitPending() {
+  const pd = state.pending; if (!pd) return;
+  clearTimeout(pd.timer); state.pending = null;
+  pushHistory(); addItem(pd.it); if (S.previewOnDraw) preview(pd.it);
+}
+stage.addEventListener("pointerdown", e => {
+  if (!e.isPrimary || (e.pointerType === "mouse" && e.button !== 0)) return;
+  e.preventDefault(); ensureAudio();
+  if (state.pending) clearTimeout(state.pending.timer);              // wait for this stroke to finish first
+  if (state.pending && state.tool !== "draw") commitPending();
+  try { stage.setPointerCapture(e.pointerId); } catch (er) {}
+  const p = pt(e);
+  if (state.tool === "move") { const hit = hitTest(p); if (hit) { pushHistory(); state.drag = { it: hit, last: p, id: e.pointerId, moved: 0 }; stage.style.cursor = "grabbing"; } return; }
+  if (state.tool === "erase") { pushHistory(); state.drag = { erase: true, id: e.pointerId, removed: 0 }; eraseAt(p); return; }
+  if (state.tool === "write" && state.ink) clearTimeout(state.ink.timer);   // still writing: wait
+  state.current = { points: [p], id: e.pointerId, lastIdx: null };
+}, { passive: false });
+stage.addEventListener("pointermove", e => {
+  if (state.drag && e.pointerId === state.drag.id) {
+    const p = pt(e);
+    if (state.drag.erase) { eraseAt(p); return; }
+    const d = state.drag, dx = p.x - d.last.x, dy = p.y - d.last.y; d.last = p; d.moved += Math.abs(dx) + Math.abs(dy);
+    d.it.strokes.forEach(st => st.forEach(q => { q.x += dx; q.y += dy; })); finalize(d.it); state.version++;
+    return;
+  }
+  const c = state.current; if (!c || e.pointerId !== c.id) return;
+  const evs = e.getCoalescedEvents ? e.getCoalescedEvents() : [];
+  (evs.length ? evs : [e]).forEach(ev => { const p = pt(ev), l = c.points[c.points.length - 1]; if (Math.hypot(p.x - l.x, p.y - l.y) >= 1.5) c.points.push(p); else l.p = Math.max(l.p, p.p); });
+  if (S.liveDraw && audioReady && state.tool !== "write") {
+    const p = c.points[c.points.length - 1], idx = noteIndex(p.y);
+    if (idx !== c.lastIdx) { c.lastIdx = idx; const id = S.current === "auto" ? S.autoMap.line : S.current; try { inst(id)(NOTES[idx], S.pressure && p.pen ? .15 + .85 * p.p : .6, level(p.y), Tone.now(), .15); } catch (er) {} }
+  }
+});
+stage.addEventListener("pointerup", endPointer);
+stage.addEventListener("pointercancel", endPointer);
+function endPointer(e) {
+  if (state.drag && e.pointerId === state.drag.id) {
+    const d = state.drag; state.drag = null; stage.style.cursor = "";
+    if (d.erase) { if (!d.removed) state.history.pop(); persist(); return; }
+    if (d.moved < 3) { state.history.pop(); preview(d.it); return; }
+    persist(); if (S.previewOnDraw) preview(d.it);
+    return;
+  }
+  const c = state.current; if (!c || e.pointerId !== c.id) return;
+  state.current = null;
+  if (state.tool === "write") {                                      // collect handwriting, read it after a pause
+    state.ink = state.ink || { strokes: [] };
+    state.ink.strokes.push(c.points); clearTimeout(state.ink.timer);
+    state.ink.timer = setTimeout(readInk, INK_WAIT);
+    return;
+  }
+  if (pathLength(c.points) < 8) {                                   // a tap: hear what's there, or drop a dot
+    commitPending();
+    const hit = hitTest(c.points[0]);
+    if (hit) { preview(hit); return; }
+    pushHistory(); const dot = makeItem("dot", [c.points.slice(0, 1)], S.current); addItem(dot); if (S.previewOnDraw) preview(dot);
+    return;
+  }
+  let it = recognise(c.points);
+  const pd = state.pending;
+  if (pd && it.kind === "line" && it.straight > .93 && crosses(pd.it.strokes[0], c.points)) {
+    clearTimeout(pd.timer); state.pending = null;
+    it = makeItem("x", [pd.it.strokes[0], c.points], pd.it.inst);     // two crossing strokes make an X
+  } else commitPending();
+  if (it.kind === "line" && it.straight > .93) {                      // maybe the first half of an X: wait
+    state.pending = { it, timer: setTimeout(commitPending, X_WAIT) };
+    return;
+  }
+  pushHistory(); addItem(it);
+  if (S.previewOnDraw) preview(it);
+}
+function eraseAt(p) { const hit = hitTest(p, 10); if (hit) { state.items = state.items.filter(i => i !== hit); state.drag.removed++; state.version++; } }
+
+/* ---------- handwriting: read with Claude (the page's built-in "ask Claude" ability) ---------- */
+const INK_WAIT = 1400;                                          // pause after the last stroke before reading
+let SAMPLE = null;
+if (window.claude && window.claude.use) claude.use("sample").then(s => {
+  SAMPLE = s;
+  if (s) s.limits().then(l => { if (l && l.images) $("tool-write").hidden = false; }).catch(() => {});
+}).catch(() => {});
+function inkPath(ps) { ctx.lineCap = "round"; ctx.lineJoin = "round"; ctx.lineWidth = Math.max(3, S.brush * .7); ctx.beginPath(); ps.forEach((p, i) => i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)); if (ps.length === 1) ctx.lineTo(ps[0].x + .1, ps[0].y); ctx.stroke(); }
+function inkImage(strokes) {
+  const all = strokes.flat(), xs = all.map(p => p.x), ys = all.map(p => p.y);
+  const x0 = Math.min(...xs), y0 = Math.min(...ys), w = Math.max(...xs) - x0, h = Math.max(...ys) - y0;
+  const scale = Math.min(3, 700 / Math.max(w, h, 1)), pad = 30;
+  const c = document.createElement("canvas"); c.width = Math.ceil(w * scale + pad * 2); c.height = Math.ceil(h * scale + pad * 2);
+  const g = c.getContext("2d"); g.fillStyle = "#fff"; g.fillRect(0, 0, c.width, c.height);
+  g.strokeStyle = "#000"; g.lineWidth = 7; g.lineCap = "round"; g.lineJoin = "round";
+  strokes.forEach(st => { g.beginPath(); st.forEach((p, i) => { const X = (p.x - x0) * scale + pad, Y = (p.y - y0) * scale + pad; i ? g.lineTo(X, Y) : g.moveTo(X, Y); }); if (st.length === 1) g.lineTo((st[0].x - x0) * scale + pad + .1, (st[0].y - y0) * scale + pad); g.stroke(); });
+  return new Promise(res => c.toBlob(res, "image/png"));
+}
+async function readInk() {
+  const ink = state.ink; if (!ink || ink.reading) return;
+  clearTimeout(ink.timer); ink.reading = true;
+  const done = () => { if (state.ink === ink) state.ink = null; };
+  if (!SAMPLE) { toast("Reading handwriting isn't available here."); done(); return; }
+  toast("Reading…");
+  try {
+    const blob = await inkImage(ink.strokes);
+    const out = await SAMPLE.json(
+      "The image is handwriting by a young child (about 4 to 10 years old), written with a finger or pen on a tablet. " +
+      "Read what it says. Children often misspell or reverse letters: if it is clearly an attempt at a common word, give that word. " +
+      'Reply with only JSON: {"text": "<what it says, lowercase, at most 20 characters>"}. ' +
+      'If it is a drawing, a scribble, or you cannot read it, reply {"text": ""}.',
+      { images: [blob], modelTier: "quick", cache: false });
+    const text = String((out && out.text) || "").trim().slice(0, 20);
+    done();
+    if (!text) { toast("I couldn't read that. Try bigger letters!"); return; }
+    pushHistory();
+    const it = makeItem("word", ink.strokes, S.current); it.text = text; finalize(it);
+    addItem(it); toast("“" + text + "”");
+    if (S.sayWords) say(text);
+    if (S.previewOnDraw) setTimeout(() => preview(it), 500);
+  } catch (e) {
+    done();
+    const code = e && e.code;
+    if (code === "not_granted" || code === "sampling_disabled" || code === "images_unavailable") { $("tool-write").hidden = true; setTool("draw"); toast("Reading handwriting was turned off."); }
+    else if (code === "rate_limited") toast("Too much writing at once. Wait a minute and try again.");
+    else toast("I couldn't read that. Try again!");
+  }
+}
+function say(text) {
+  try { if (!window.speechSynthesis || !text) return; speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(text); u.rate = .85; u.pitch = 1.25; speechSynthesis.speak(u); } catch (e) {}
+}
+function drawWord(it, col, now) {
+  const text = it.text || "", h = Math.max(30, Math.min(160, it.maxY - it.minY)), w = it.maxX - it.minX;
+  ctx.font = `700 ${h}px Fredoka, system-ui, sans-serif`;
+  let size = h; const tw = ctx.measureText(text).width; if (tw > w * 1.25 && tw > 0) size = Math.max(24, h * w * 1.25 / tw);
+  ctx.font = `700 ${size}px Fredoka, system-ui, sans-serif`; ctx.textBaseline = "middle"; ctx.textAlign = "left";
+  const total = ctx.measureText(text).width; let x = it.cx - total / 2;
+  const age = now - it.bumpT, b = age < 300 ? Math.sin(age / 300 * Math.PI) : 0, lit = it.bumpEv ? it.bumpEv.letter : -1;
+  let li = -1;
+  for (const ch of text) {
+    const cw = ctx.measureText(ch).width; if (/[a-z0-9]/i.test(ch)) li++;
+    const s = li === lit && /[a-z0-9]/i.test(ch) ? 1 + .35 * b : 1;
+    ctx.save(); ctx.translate(x + cw / 2, it.cy); ctx.scale(s, s);
+    ctx.fillStyle = col; ctx.globalAlpha = Math.min(1, Math.max(0, (now - it.born) / 160)); ctx.fillText(ch, -cw / 2, 0);
+    ctx.restore(); x += cw;
+  }
+}
+
+/* ---------- recognising strokes ---------- */
+function pathLength(ps) { let L = 0; for (let i = 1; i < ps.length; i++) L += Math.hypot(ps[i].x - ps[i-1].x, ps[i].y - ps[i-1].y); return L; }
+function resample(ps, n) {
+  const I = pathLength(ps) / (n - 1); let D = 0; const out = [{ ...ps[0] }], src = ps.map(p => ({ ...p }));
+  for (let i = 1; i < src.length; i++) {
+    const d = Math.hypot(src[i].x - src[i-1].x, src[i].y - src[i-1].y);
+    if (D + d >= I && d > 0) { const t = (I - D) / d; const q = { x: src[i-1].x + t * (src[i].x - src[i-1].x), y: src[i-1].y + t * (src[i].y - src[i-1].y), p: src[i].p }; out.push(q); src.splice(i, 0, q); D = 0; }
+    else D += d;
+  }
+  while (out.length < n) out.push({ ...ps[ps.length - 1] });
+  return out.slice(0, n);
+}
+function trimOvershoot(ps) {
+  const total = pathLength(ps); let acc = 0, best = -1, bestD = Infinity;
+  for (let i = 1; i < ps.length; i++) { acc += Math.hypot(ps[i].x - ps[i-1].x, ps[i].y - ps[i-1].y); if (acc < total * .65) continue; const d = Math.hypot(ps[i].x - ps[0].x, ps[i].y - ps[0].y); if (d < bestD) { bestD = d; best = i; } }
+  return best > 0 ? ps.slice(0, best + 1) : ps;
+}
+function cornerCount(r, k, TH) {
+  const N = r.length, ang = r.map((p, i) => {
+    const a = r[(i - k + N) % N], b = r[(i + k) % N];
+    const v1x = p.x - a.x, v1y = p.y - a.y, v2x = b.x - p.x, v2y = b.y - p.y;
+    const cos = (v1x*v2x + v1y*v2y) / (Math.hypot(v1x, v1y) * Math.hypot(v2x, v2y) || 1);
+    return Math.acos(Math.max(-1, Math.min(1, cos)));
+  });
+  let n = 0;
+  for (let i = 0; i < N; i++) {
+    if (ang[i] <= TH) continue;
+    let isMax = true;
+    for (let j = 1; j <= k && isMax; j++) if (ang[(i + j) % N] > ang[i] || ang[(i - j + N) % N] >= ang[i]) isMax = false;
+    if (isMax) n++;
+  }
+  return n;
+}
+function measure(raw) {
+  const ps = trimOvershoot(raw), xs = ps.map(p => p.x), ys = ps.map(p => p.y);
+  const diag = Math.hypot(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys));
+  const len = pathLength(ps), gap = Math.hypot(ps[0].x - ps[ps.length-1].x, ps[0].y - ps[ps.length-1].y);
+  const closed = diag > 24 && gap < Math.max(26, .35 * diag) && len > 2 * diag;
+  const straight = Math.hypot(raw[0].x - raw[raw.length-1].x, raw[0].y - raw[raw.length-1].y) / (pathLength(raw) || 1);
+  let corners = 0, roundness = 0;
+  if (closed) {
+    const N = 64, r = resample(ps.concat([ps[0]]), N + 1).slice(0, N);
+    corners = cornerCount(r, 4, .95);
+    const cx = r.reduce((s, p) => s + p.x, 0) / N, cy = r.reduce((s, p) => s + p.y, 0) / N;
+    const rad = r.map(p => Math.hypot(p.x - cx, p.y - cy)), mean = rad.reduce((s, v) => s + v, 0) / N;
+    roundness = Math.max(0, 1 - Math.sqrt(rad.reduce((s, v) => s + (v - mean) ** 2, 0) / N) / (mean || 1) / .3);
+  }
+  return { closed, corners, roundness, straight, diag };
+}
+function recognise(points) { const info = measure(points); const it = makeItem(RULES.find(r => r[1](info))[0], [points], S.current); it.straight = info.straight; return it; }
+function crosses(a, b) {
+  const p = a[0], p2 = a[a.length - 1], q = b[0], q2 = b[b.length - 1];
+  const r = { x: p2.x - p.x, y: p2.y - p.y }, s = { x: q2.x - q.x, y: q2.y - q.y }, den = r.x * s.y - r.y * s.x;
+  if (Math.abs(den) < 1e-6) return false;
+  const t = ((q.x - p.x) * s.y - (q.y - p.y) * s.x) / den, u = ((q.x - p.x) * r.y - (q.y - p.y) * r.x) / den;
+  const la = Math.hypot(r.x, r.y), lb = Math.hypot(s.x, s.y), ang = Math.abs(Math.atan2(den, r.x * s.x + r.y * s.y));
+  return t > .15 && t < .85 && u > .15 && u < .85 && la / lb > .4 && la / lb < 2.5 && ang > .6 && ang < Math.PI - .6;
+}
+function makeItem(kind, strokes, instId) { const it = { id: state.nextId++, kind, inst: instId || "auto", strokes, born: performance.now(), bumpT: -1e9 }; finalize(it); return it; }
+function finalize(it) {
+  const all = it.strokes.flat(), xs = all.map(p => p.x), ys = all.map(p => p.y);
+  it.minX = Math.min(...xs); it.maxX = Math.max(...xs); it.minY = Math.min(...ys); it.maxY = Math.max(...ys);
+  it.cx = (it.minX + it.maxX) / 2; it.cy = (it.minY + it.maxY) / 2;
+  it.pen = all.some(p => p.pen); it.avgP = all.reduce((s, p) => s + (p.p ?? .5), 0) / all.length;
+  it.sorted = POINT_KINDS.has(it.kind) || it.kind === "word" ? null : [...it.strokes[0]].sort((a, b) => a.x - b.x);
+  if (it.straight === undefined && it.kind === "line") { const st = it.strokes[0]; it.straight = Math.hypot(st[0].x - st[st.length-1].x, st[0].y - st[st.length-1].y) / (pathLength(st) || 1); }
+  it._evV = -1;
+}
+function widthAt(p) { return S.pressure && p.pen ? S.brush * (.25 + 1.75 * p.p) : S.brush; }
+function hitTest(p, pad = 0) {
+  for (let i = state.items.length - 1; i >= 0; i--) {
+    const it = state.items[i];
+    if (it.kind === "word") { if (p.x >= it.minX - 8 - pad && p.x <= it.maxX + 8 + pad && p.y >= it.minY - 8 - pad && p.y <= it.maxY + 8 + pad) return it; continue; }
+    if (it.kind === "dot") { if (Math.hypot(it.cx - p.x, it.cy - p.y) < 14 + S.brush + pad) return it; }
+    else if (POINT_KINDS.has(it.kind)) { if (p.x >= it.minX - 6 - pad && p.x <= it.maxX + 6 + pad && p.y >= it.minY - 6 - pad && p.y <= it.maxY + 6 + pad) return it; }
+    else if (it.strokes[0].some(q => Math.hypot(q.x - p.x, q.y - p.y) < 10 + widthAt(q) + pad)) return it;
+  }
+  return null;
+}
+function addItem(it) { state.items.push(it); if (state.items.length > 80) state.items.shift(); persist(); }
+
+/* ---------- history and saving (kept in this browser only) ---------- */
+const serial = () => state.items.map(i => ({ kind: i.kind, inst: i.inst, text: i.text, strokes: i.strokes.map(s => s.map(p => ({ x: +(p.x / W).toFixed(4), y: +(p.y / H).toFixed(4), p: +(p.p ?? .5).toFixed(3), pen: p.pen ? 1 : 0 }))) }));
+function restore(list) { state.items = (list || []).filter(o => KINDS[o.kind]).map(o => { const it = { id: state.nextId++, kind: o.kind, inst: o.inst === "auto" || INSTRUMENTS[o.inst] ? o.inst : "auto", text: o.text, strokes: o.strokes.map(s => s.map(p => ({ x: p.x * W, y: p.y * H, p: p.p, pen: !!p.pen }))), born: -1e9, bumpT: -1e9 }; finalize(it); return it; }); state.version++; }
+function pushHistory() { state.history.push(serial()); if (state.history.length > 100) state.history.shift(); }
+function undo() { if (state.pending) { clearTimeout(state.pending.timer); state.pending = null; return; } if (!state.history.length) { toast("Nothing to undo"); return; } restore(state.history.pop()); persist(); }
+function persist() { state.version++; save("ks3-drawing", serial()); }
+
+/* ---------- drawing ---------- */
+function bump(it, ev) { it.bumpT = performance.now(); it.bumpEv = ev; }
+function strokePath(ps, scale = 1) {
+  ctx.lineCap = "round"; ctx.lineJoin = "round";
+  if (ps.length === 1) { ctx.beginPath(); ctx.arc(ps[0].x, ps[0].y, widthAt(ps[0]) * scale / 2, 0, 7); ctx.fillStyle = ctx.strokeStyle; ctx.fill(); return; }
+  for (let i = 1; i < ps.length; i++) { ctx.lineWidth = Math.max(1, (widthAt(ps[i]) + widthAt(ps[i-1])) / 2 * scale); ctx.beginPath(); ctx.moveTo(ps[i-1].x, ps[i-1].y); ctx.lineTo(ps[i].x, ps[i].y); ctx.stroke(); }
+}
+function draw(now) {
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  ctx.fillStyle = "#fbfaf6"; ctx.fillRect(0, 0, W, H);
+  let px = -1;
+  if (state.playing && audioReady) { const f = ((Tone.now() - play.t0) / loopSec()); px = f >= 0 ? (f % 1) * W : -1; }
+  if (px >= 0) { ctx.fillStyle = "rgba(43,42,51,.09)"; ctx.fillRect(px - 3, 0, 6, H); }
+  state.items.forEach(it => drawItem(it, now));
+  if (state.pending) drawItem(state.pending.it, now);
+  if (state.ink) { ctx.strokeStyle = "#55536a"; ctx.globalAlpha = state.ink.reading ? .35 + .25 * Math.sin(now / 150) : .85; state.ink.strokes.forEach(st => inkPath(st)); ctx.globalAlpha = 1; }
+  if (state.current) { ctx.strokeStyle = S.current === "auto" ? "#2b2a33" : instColor(S.current); ctx.globalAlpha = .85; strokePath(state.current.points); ctx.globalAlpha = 1; }
+}
+function drawItem(it, now) {
+  const col = instColor(instOf(it));
+  const age = now - it.bumpT, b = age < 260 ? Math.sin(age / 260 * Math.PI) : 0;
+  ctx.globalAlpha = Math.min(1, Math.max(0, (now - it.born) / 160));
+  ctx.fillStyle = ctx.strokeStyle = col;
+  if (it.kind === "word") { drawWord(it, col, now); ctx.globalAlpha = 1; return; }
+  if (it.kind === "dot") {
+    const r = Math.max(7, widthAt(it.strokes[0][0]) * 1.4) * (1 + .35 * b);
+    ctx.beginPath(); ctx.arc(it.cx, it.cy, r, 0, 7); ctx.fill();
+  } else if (it.kind === "x") {
+    it.strokes.forEach(st => strokePath(st, 1.6 * (1 + .4 * b)));
+  } else if (POINT_KINDS.has(it.kind)) {
+    const s = 1 + .1 * b;
+    ctx.save(); ctx.translate(it.cx, it.cy); ctx.scale(s, s); ctx.translate(-it.cx, -it.cy);
+    ctx.beginPath(); it.strokes[0].forEach((p, i) => i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)); ctx.closePath(); ctx.fill();
+    strokePath(it.strokes[0].concat([it.strokes[0][0]]));
+    if (S.faces) drawFace(it, b);
+    ctx.restore();
+  } else {
+    strokePath(it.strokes[0], 1 + .25 * b);
+    if (b > 0 && it.bumpEv) { ctx.globalAlpha = .5 * b; ctx.beginPath(); ctx.arc(it.bumpEv.x, it.bumpEv.y, widthAt({ p: it.bumpEv.vel, pen: it.pen }) + 10 * b, 0, 7); ctx.fill(); }
+  }
+  ctx.globalAlpha = 1;
+}
+function drawFace(it, b) {
+  const w = it.maxX - it.minX, h = it.maxY - it.minY, sz = Math.min(w, h);
+  if (sz < 34) return;
+  const cy = it.kind === "triangle" ? it.minY + h * .62 : it.cy, e = Math.max(3.5, sz * .07), dx = sz * .14;
+  ctx.fillStyle = "#fff"; [-1, 1].forEach(d => { ctx.beginPath(); ctx.arc(it.cx + d * dx, cy - sz * .06, e, 0, 7); ctx.fill(); });
+  ctx.fillStyle = "#2b2a33"; [-1, 1].forEach(d => { ctx.beginPath(); ctx.arc(it.cx + d * dx + e * .2, cy - sz * .06, e * .5, 0, 7); ctx.fill(); });
+  ctx.beginPath(); ctx.ellipse(it.cx, cy + sz * .1, sz * .08, Math.max(1.5, sz * .015 + sz * .07 * b), 0, 0, 7); ctx.fill();
+}
+function loop(now) { scheduleAhead(); draw(now); requestAnimationFrame(loop); }
+
+/* ---------- instrument paints ---------- */
+function chip(id, onClick) {
+  const b = document.createElement("button"); b.className = "chip" + (id === "auto" ? " auto" : "");
+  const label = id === "auto" ? "Auto" : INSTRUMENTS[id].label;
+  b.innerHTML = `<i${id === "auto" ? "" : ` style="background:${instColor(id)}"`}></i>${label}`;
+  b.title = id === "auto" ? "The shape picks the sound" : label;
+  if (id !== "auto") b.style.setProperty("--c", instColor(id));
+  b.setAttribute("aria-pressed", String(S.current === id));
+  b.onclick = onClick; return b;
+}
+function selectInstrument(id, hear = true) {
+  S.current = id;
+  if (!S.favorites.includes(id)) { S.favorites.splice(1, 0, id); S.favorites = S.favorites.slice(0, 16); }
+  changed("current"); renderPaints();
+  if (hear && id !== "auto") ensureAudio().then(ok => ok && inst(id)(NOTES[Math.floor(S.notes * .55)], .8, .55, Tone.now() + .03, .35));
+}
+function renderPaints() {
+  const P = $("paints"); P.innerHTML = "";
+  S.favorites.forEach(id => P.append(chip(id, () => selectInstrument(id))));
+  const more = document.createElement("button"); more.className = "chip more"; more.textContent = "More sounds…"; more.onclick = openPicker; P.append(more);
+  const sel = P.querySelector('[aria-pressed="true"]'); if (sel) sel.scrollIntoView({ block: "nearest", inline: "nearest" });
+}
+function openPicker() {
+  const B = $("picker-body"); B.innerHTML = "";
+  const fam = {}; Object.entries(INSTRUMENTS).forEach(([id, d]) => { if (id !== "silence") (fam[d.family] = fam[d.family] || []).push(id); });
+  const head = document.createElement("h4"); head.textContent = "Let the shape decide"; B.append(head);
+  const g0 = document.createElement("div"); g0.className = "chipgrid"; g0.append(chip("auto", () => { selectInstrument("auto"); $("picker").hidden = true; })); B.append(g0);
+  Object.entries(fam).forEach(([f, ids]) => {
+    const h = document.createElement("h4"); h.textContent = f; B.append(h);
+    const g = document.createElement("div"); g.className = "chipgrid";
+    ids.forEach(id => g.append(chip(id, () => { selectInstrument(id); openPicker(); })));
+    B.append(g);
+  });
+  $("picker").hidden = false;
+}
+
+/* ---------- controls ---------- */
+function toast(msg) { const t = $("toast"); t.textContent = msg; t.classList.add("show"); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove("show"), 2400); }
+function setTool(t) { commitPending(); if (state.ink && t !== "write") readInk(); state.tool = t; ["draw", "move", "erase", "write"].forEach(k => $("tool-" + k).setAttribute("aria-pressed", String(k === t))); stage.className = "tool-" + t; }
+function changed(what) {
+  save("ks3-settings", S);
+  if (["scale", "key", "octave", "notes"].includes(what)) buildNotes();
+  if (["reverb", "echo", "volume"].includes(what)) applyFx();
+  $("speed-label").textContent = "Speed " + (S.speed + 1);
+  state.version++;
+}
+$("tool-draw").onclick = () => setTool("draw");
+$("tool-move").onclick = () => setTool("move");
+$("tool-erase").onclick = () => setTool("erase");
+$("tool-write").onclick = () => { setTool("write"); toast("Write a word. When you stop, it turns into music."); };
+$("btn-play").onclick = () => {
+  if (state.playing) { setPlaying(false); return; }
+  ensureAudio().then(ok => { if (ok) setPlaying(true); else toast("Sound is blocked. Tap the page once, then press play again."); });
+};
+$("btn-undo").onclick = undo;
+/* Full screen: works from a click in desktop browsers; hidden where the browser won't allow it */
+if (!document.fullscreenEnabled) $("btn-full").hidden = true;
+$("btn-full").onclick = () => {
+  const p = document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen({ navigationUI: "hide" });
+  if (p && p.catch) p.catch(() => toast("Full screen isn't allowed here. Press F11 instead."));
+};
+document.addEventListener("fullscreenchange", () => {
+  $("full-icon").innerHTML = document.fullscreenElement ? '<path d="M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 11h2v-3h3v-2h-5v5zm2-11V5h-2v5h5V8h-3z"/>' : '<path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/>';
+  $("btn-full").setAttribute("aria-label", document.fullscreenElement ? "Exit full screen" : "Full screen");
+});
+$("btn-slower").onclick = () => changeSpeed(S.speed - 1);
+$("btn-faster").onclick = () => changeSpeed(S.speed + 1);
+$("btn-reset").onclick = () => { $("confirm").hidden = false; $("confirm-no").focus(); };
+$("confirm-no").onclick = () => { $("confirm").hidden = true; };
+$("confirm-yes").onclick = () => { if (state.ink) { clearTimeout(state.ink.timer); state.ink = null; } pushHistory(); state.items = []; persist(); setPlaying(false); $("confirm").hidden = true; };
+$("btn-help").onclick = () => { buildLegend(); $("help").hidden = false; $("help-close").focus(); };
+$("help-close").onclick = () => { $("help").hidden = true; };
+$("picker-close").onclick = () => { $("picker").hidden = true; };
+["confirm", "help", "picker"].forEach(id => $(id).addEventListener("click", e => { if (e.target === $(id)) $(id).hidden = true; }));
+$("btn-settings").onclick = () => { buildDrawer(); $("drawer").classList.add("open"); };
+$("drawer-close").onclick = () => { $("drawer").classList.remove("open"); };
+document.addEventListener("keydown", e => {
+  if (e.target.closest && e.target.closest("select,input")) return;
+  if (e.key === "Escape") { ["confirm", "help", "picker"].forEach(id => $(id).hidden = true); $("drawer").classList.remove("open"); }
+  if (e.key === " ") { e.preventDefault(); $("btn-play").click(); }
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") { e.preventDefault(); undo(); return; }
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  if (e.key === "f" && !$("btn-full").hidden) $("btn-full").click(); if (e.key === "d") setTool("draw"); if (e.key === "m") setTool("move"); if (e.key === "e") setTool("erase"); if (e.key === "w" && !$("tool-write").hidden) $("tool-write").click();
+});
+
+/* ---------- shape icons for the help panel and settings ---------- */
+function icon(kind, colorStr, px = 80) {
+  const c = document.createElement("canvas"); c.width = c.height = px;
+  const g = c.getContext("2d"); g.scale(px / 80, px / 80);
+  g.fillStyle = g.strokeStyle = colorStr; g.lineWidth = 7; g.lineCap = g.lineJoin = "round"; g.beginPath();
+  ({
+    dot: () => { g.arc(40, 40, 14, 0, 7); g.fill(); },
+    circle: () => { g.arc(40, 40, 28, 0, 7); g.fill(); },
+    triangle: () => { g.moveTo(40, 10); g.lineTo(70, 66); g.lineTo(10, 66); g.closePath(); g.fill(); g.stroke(); },
+    square: () => { g.rect(14, 14, 52, 52); g.fill(); g.stroke(); },
+    star: () => { for (let i = 0; i < 10; i++) { const r = i % 2 ? 14 : 32, a = -Math.PI / 2 + i * Math.PI / 5; g.lineTo(40 + r * Math.cos(a), 42 + r * Math.sin(a)); } g.closePath(); g.fill(); g.stroke(); },
+    x: () => { g.lineWidth = 10; g.moveTo(16, 16); g.lineTo(64, 64); g.moveTo(64, 16); g.lineTo(16, 64); g.stroke(); },
+    word: () => { g.font = "700 40px Fredoka, system-ui, sans-serif"; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText("Aa", 40, 44); },
+    line: () => { g.moveTo(8, 48); g.bezierCurveTo(24, 6, 40, 78, 56, 30); g.quadraticCurveTo(64, 14, 74, 32); g.stroke(); },
+  })[kind]();
+  return c;
+}
+function buildLegend() {
+  const L = $("legend"); L.innerHTML = "";
+  KIND_ORDER.forEach(k => { const s = document.createElement("span"); s.innerHTML = `${KINDS[k].name}: ${INSTRUMENTS[S.autoMap[k]].label}<em>${KINDS[k].how}</em>`; L.append(icon(k, instColor(S.autoMap[k])), s); });
+}
+
+/* ---------- settings drawer ---------- */
+function field(label, control, valText) {
+  const f = document.createElement("div"); f.className = "field";
+  const l = document.createElement("label"); l.textContent = label; l.htmlFor = control.id;
+  if (control.type === "range") { const v = document.createElement("span"); v.className = "val"; v.textContent = valText; control._val = v; f.append(l, v, control); }
+  else f.append(l, control);
+  return f;
+}
+function sel(id, options, value, onChange) {
+  const s = document.createElement("select"); s.id = id;
+  options.forEach(o => { if (o.group) { const g = document.createElement("optgroup"); g.label = o.group; o.items.forEach(([v, t]) => g.append(new Option(t, v))); s.append(g); } else s.append(new Option(o[1], o[0])); });
+  s.value = String(value); s.onchange = () => onChange(s.value); return s;
+}
+function range(id, min, max, step, value, fmt, onChange) { const r = document.createElement("input"); r.type = "range"; r.id = id; r.min = min; r.max = max; r.step = step; r.value = value; r.oninput = () => { onChange(+r.value); r._val.textContent = fmt(+r.value); }; return r; }
+function check(id, value, onChange) { const c = document.createElement("input"); c.type = "checkbox"; c.id = id; c.checked = !!value; c.onchange = () => onChange(c.checked); return c; }
+function instrumentOptions() { const fam = {}; Object.entries(INSTRUMENTS).forEach(([id, d]) => (fam[d.family] = fam[d.family] || []).push([id, d.label])); return Object.entries(fam).map(([group, items]) => ({ group, items })); }
+function buildDrawer() {
+  const B = $("drawer-body"), keep = B.scrollTop; B.innerHTML = "";
+  const h = t => { const e = document.createElement("h3"); e.textContent = t; B.append(e); };
+  const note = t => { const e = document.createElement("p"); e.className = "note"; e.textContent = t; B.append(e); };
+  const set = k => v => { S[k] = v; changed(k); };
+  const pct = v => Math.round(v * 100) + "%", db = v => (v > 0 ? "+" : "") + v + " dB";
+
+  h("Pen and brush");
+  B.append(field("Pen pressure changes thickness and loudness", check("s-pressure", S.pressure, set("pressure"))));
+  note(state.sawPressure ? "Your pen is sending pressure." : "Works with a pressure-sensitive pen. A mouse or finger always draws at the middle thickness.");
+  B.append(field("Brush size", range("s-brush", 1, 24, 1, S.brush, v => v + " px", set("brush")), S.brush + " px"));
+  B.append(field("Faces on shapes", check("s-faces", S.faces, set("faces"))));
+
+  h("Music");
+  B.append(field("Scale", sel("s-scale", Object.entries(SCALES).map(([k, v]) => [k, v.label]), S.scale, set("scale"))));
+  B.append(field("Key", sel("s-key", KEYS.map(k => [k, k]), S.key, set("key"))));
+  B.append(field("Pitch range", sel("s-oct", [[2, "Low"], [3, "Middle"], [4, "High"]], S.octave, v => { S.octave = +v; changed("octave"); })));
+  B.append(field("Notes from bottom to top", range("s-notes", 5, 29, 1, S.notes, v => v, set("notes")), S.notes));
+  B.append(field("Speed", range("s-speed", 0, SPEEDS.length - 1, 1, S.speed, v => (v + 1) + " (" + SPEEDS[v] + " s per sweep)", v => changeSpeed(v)), (S.speed + 1) + " (" + SPEEDS[S.speed] + " s per sweep)"));
+  B.append(field("Loop forever", check("s-loop", S.loop, set("loop"))));
+  B.append(field("Big shapes play louder", check("s-loud", S.sizeLoud, set("sizeLoud"))));
+  B.append(field("Wide shapes hold their note", check("s-long", S.sizeLong, set("sizeLong"))));
+  B.append(field("Play a drawing when it's finished", check("s-prev", S.previewOnDraw, set("previewOnDraw"))));
+  B.append(field("Play notes while drawing", check("s-live", S.liveDraw, set("liveDraw"))));
+  B.append(field("Say words out loud", check("s-say", S.sayWords, set("sayWords"))));
+
+  h("Auto colour: what each shape plays");
+  B.append(field("Preset", sel("s-autoset", AUTO_SETS.map((s, i) => [i, s.name]), S.autoSet, v => { S.autoSet = +v; S.autoMap = { ...AUTO_SETS[+v].play }; changed("autoMap"); buildDrawer(); })));
+  const opts = instrumentOptions();
+  KIND_ORDER.forEach(k => {
+    const row = document.createElement("div"); row.className = "shape-row";
+    const name = document.createElement("span"); name.textContent = KINDS[k].name;
+    const s = sel("s-auto-" + k, opts, S.autoMap[k], v => { S.autoMap[k] = v; changed("autoMap"); buildDrawer(); ensureAudio().then(ok => ok && inst(v)(NOTES[Math.floor(S.notes * .55)], .8, .55, Tone.now() + .03, .35)); });
+    s.setAttribute("aria-label", KINDS[k].name + " sound");
+    row.append(icon(k, instColor(S.autoMap[k]), 60), name, s); B.append(row);
+  });
+
+  h("Sound");
+  B.append(field("Echo", range("s-echo", 0, .8, .05, S.echo, pct, set("echo")), pct(S.echo)));
+  B.append(field("Room sound (reverb)", range("s-rev", 0, 1, .05, S.reverb, pct, set("reverb")), pct(S.reverb)));
+  B.append(field("Volume", range("s-vol", -30, 6, 1, S.volume, db, set("volume")), db(S.volume)));
+
+  const a = document.createElement("div"); a.className = "actions";
+  const btn = (t, f, primary) => { const b = document.createElement("button"); b.textContent = t; b.onclick = f; if (primary) b.className = "primary"; a.append(b); };
+  btn("Load the example", () => { pushHistory(); demo(); persist(); toast("Example loaded"); }, true);
+  btn("Reset settings", () => { Object.keys(DEFAULTS).forEach(k => { S[k] = structuredClone(DEFAULTS[k]); }); fillDefaults(); buildNotes(); changed("volume"); renderPaints(); buildDrawer(); toast("Settings reset"); });
+  B.append(a);
+  B.scrollTop = keep;
+}
+
+/* ---------- example drawing ---------- */
+function demo() {
+  const P = (x, y, p = .5) => ({ x: x * W, y: y * H, p, pen: false });
+  const circ = (cx, cy, r) => Array.from({ length: 50 }, (_, i) => P(cx + r * Math.cos(i / 49 * 2 * Math.PI) * H / W, cy + r * Math.sin(i / 49 * 2 * Math.PI)));
+  const tri = (cx, cy, r) => { const v = [0, 1, 2].map(k => [cx + r * Math.cos(-Math.PI / 2 + k * 2 * Math.PI / 3) * H / W, cy + r * Math.sin(-Math.PI / 2 + k * 2 * Math.PI / 3)]); const out = []; for (let k = 0; k < 3; k++) for (let t = 0; t < 12; t++) { const a = v[k], b = v[(k + 1) % 3]; out.push(P(a[0] + (b[0] - a[0]) * t / 12, a[1] + (b[1] - a[1]) * t / 12)); } return out; };
+  const wave = (x0, x1, y, amp, waves, thick) => Array.from({ length: 140 }, (_, i) => { const f = i / 139; return { ...P(x0 + (x1 - x0) * f, y + amp * Math.sin(f * waves * 2 * Math.PI)), p: thick ? .3 + .6 * Math.abs(Math.sin(f * waves * Math.PI)) : .5, pen: !!thick }; });
+  const items = [];
+  [.08, .3, .52, .74].forEach(x => items.push(makeItem("triangle", [tri(x, .74, .05)], "drums")));
+  items.push(makeItem("line", [wave(.05, .95, .38, .1, 2, true)], "marimba"));
+  items.push(makeItem("line", [wave(.1, .9, .62, .05, 1.5)], "bass"));
+  items.push(makeItem("circle", [circ(.4, .2, .06)], "ooh"));
+  items.push(makeItem("circle", [circ(.86, .26, .05)], "choir"));
+  items.push(makeItem("x", [[P(.93, .1), P(.97, .17)], [P(.97, .1), P(.93, .17)]], "crash"));
+  items.push(makeItem("dot", [[P(.63, .16)]], "meow"));
+  state.items = items; state.version++;
+}
+
+/* ---------- start ---------- */
+resize(); buildNotes(); renderPaints(); changed("speed");
+const saved = load("ks3-drawing", null);
+if (saved && saved.length) restore(saved); else { demo(); setTimeout(() => toast("Here's an example. Press play, or Reset to start fresh."), 400); }
+requestAnimationFrame(loop);
+window.studio = { state, S, INSTRUMENTS, KINDS, AUTO_SETS, RULES, recognise, measure, events, makeItem, ensureAudio, inst, notes: () => NOTES };
+</script>
+
+</body></html>

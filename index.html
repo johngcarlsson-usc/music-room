@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Class Music Room</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&display=swap">
+<style>
+/* Layout: a short welcome, then a 2x2 grid of big tappable app tiles; one quiet tips strip below. */
+:root {
+  --bg: #f4f7fb;
+  --surface: #ffffff;
+  --ink: #23283a;
+  --ink-soft: #5d6478;
+  --edge: #dfe4ee;
+  --focus: #3d7be0;
+  --c-drum: #e8413b;
+  --c-paint: #2f8fd8;
+  --c-move: #2fa36b;
+  --c-song: #a05ad6;
+  --font-display: "Fredoka", "Baloo 2", "Trebuchet MS", system-ui, sans-serif;
+  --font-body: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #141824; --surface: #1d2333; --ink: #eef1f8; --ink-soft: #a6aec2; --edge: #2e364b; --focus: #7aa8ff;
+    --c-drum: #ff6b63; --c-paint: #5bb0f2; --c-move: #4cc48a; --c-song: #c08af0;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #141824; --surface: #1d2333; --ink: #eef1f8; --ink-soft: #a6aec2; --edge: #2e364b; --focus: #7aa8ff;
+  --c-drum: #ff6b63; --c-paint: #5bb0f2; --c-move: #4cc48a; --c-song: #c08af0;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 16px; line-height: 1.5;
+  padding-block: 32px 48px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.wrap { max-width: 920px; margin: 0 auto; display: grid; gap: 28px; }
+header { display: grid; gap: 6px; }
+h1 { font-family: var(--font-display); font-weight: 700; font-size: clamp(30px, 5vw, 44px); line-height: 1.1; margin: 0; text-wrap: balance; }
+header p { margin: 0; color: var(--ink-soft); max-width: 60ch; font-size: 17px; }
+.grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+@media (max-width: 640px) { .grid { grid-template-columns: 1fr; } }
+.tile {
+  --c: var(--ink);
+  display: grid; grid-template-columns: 72px minmax(0, 1fr); gap: 16px; align-items: center;
+  padding: 18px; border-radius: 22px; background: var(--surface); border: 2px solid var(--edge);
+  color: inherit; text-decoration: none; transition: transform .15s ease, border-color .15s ease;
+}
+a.tile:hover { transform: translateY(-2px); border-color: var(--c); }
+a.tile:focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; }
+.icon { width: 72px; height: 72px; border-radius: 18px; background: var(--c); display: grid; place-items: center; }
+.icon svg { width: 44px; height: 44px; }
+.tile h2 { font-family: var(--font-display); font-weight: 600; font-size: 23px; margin: 0 0 2px; line-height: 1.15; }
+.tile p { margin: 0; color: var(--ink-soft); font-size: 15px; min-width: 0; }
+.go { display: inline-block; margin-top: 8px; font-family: var(--font-display); font-weight: 600; font-size: 15px; color: var(--c); }
+.tile.soon { opacity: .6; border-style: dashed; }
+.tile.soon .go { color: var(--ink-soft); }
+.drum { --c: var(--c-drum); } .paint { --c: var(--c-paint); } .move { --c: var(--c-move); } .song { --c: var(--c-song); }
+.tips { background: var(--surface); border: 1px solid var(--edge); border-radius: 18px; padding: 16px 20px; display: grid; gap: 6px; }
+.tips h3 { font-family: var(--font-display); font-weight: 600; font-size: 14px; text-transform: uppercase; letter-spacing: .08em; color: var(--ink-soft); margin: 0; }
+.tips ul { margin: 0; padding-left: 20px; display: grid; gap: 4px; }
+.tips li { max-width: 70ch; }
+@media (prefers-reduced-motion: reduce) { .tile { transition: none; } }
+</style>
+
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Class Music Room</h1>
+    <p>Four music toys for making beats, drawing songs and moving to music. Tap one to open it, then press play.</p>
+  </header>
+
+  <main class="grid">
+    <a class="tile drum" href="monster-band/">
+      <span class="icon"><svg viewBox="0 0 48 48" aria-hidden="true"><ellipse cx="24" cy="18" rx="15" ry="6" fill="#fff"/><path d="M9 18v13c0 3.3 6.7 6 15 6s15-2.7 15-6V18c0 3.3-6.7 6-15 6S9 21.3 9 18z" fill="#fff" opacity=".75"/><path d="M30 4l-8 13M40 6l-12 11" stroke="#fff" stroke-width="3" stroke-linecap="round"/></svg></span>
+      <span><h2>Monster Band</h2><p>A band of monsters plays the beat you tap into the grid: big drum, hi-hat, snare, tom, horn and rattle.</p><span class="go">Open Monster Band</span></span>
+    </a>
+    <a class="tile paint" href="kandinsky/">
+      <span class="icon"><svg viewBox="0 0 48 48" aria-hidden="true"><path d="M6 34c6-10 10-10 14-4s8 6 12-4 8-10 10-6" stroke="#fff" stroke-width="4" fill="none" stroke-linecap="round"/><circle cx="13" cy="14" r="5" fill="#fff"/><path d="M30 9l4 7h-8z" fill="#fff" opacity=".8"/></svg></span>
+      <span><h2>Kandinsky Studio</h2><p>Draw lines and shapes in colour and hear them played back as music. Higher on the page is higher notes.</p><span class="go">Open Kandinsky Studio</span></span>
+    </a>
+    <a class="tile move" href="hand-band/">
+      <span class="icon"><svg viewBox="0 0 48 48" aria-hidden="true"><circle cx="24" cy="9" r="5" fill="#fff"/><path d="M24 16v14M24 30l-7 12M24 30l7 12M12 20l12 3 12-7" stroke="#fff" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+      <span><h2>Hand Band</h2><p>Wave your hands in front of the camera to touch coloured circles that sing, or play falling-note songs.</p><span class="go">Open Hand Band</span></span>
+    </a>
+    <a class="tile song" href="song-maker/">
+      <span class="icon"><svg viewBox="0 0 48 48" aria-hidden="true"><rect x="6" y="8" width="8" height="8" rx="2" fill="#fff"/><rect x="16" y="20" width="8" height="8" rx="2" fill="#fff"/><rect x="26" y="14" width="8" height="8" rx="2" fill="#fff"/><rect x="36" y="26" width="8" height="8" rx="2" fill="#fff"/><path d="M6 40h38" stroke="#fff" stroke-width="3" stroke-linecap="round" opacity=".7"/></svg></span>
+      <span><h2>Class Song Maker</h2><p>Build a melody and a beat on a grid of coloured squares. Opens with the song the class made.</p><span class="go">Open Song Maker</span></span>
+    </a>
+  </main>
+
+  <section class="tips" aria-labelledby="tips-title">
+    <h3 id="tips-title">Tips for the classroom</h3>
+    <ul>
+      <li>Works best in Chrome on a laptop or a classroom screen. Sound starts after you press play.</li>
+      <li>Hand Band needs a webcam: click Allow when Chrome asks to use the camera.</li>
+      <li>Each toy has a full-screen button for showing the class.</li>
+      <li>Settings and beats are remembered on the computer you use, so the class can pick up where it left off.</li>
+      <li>On a Bluetooth speaker, press <strong>]</strong> in Monster Band until the monsters line up with the sound, and <strong>[</strong> to undo.</li>
+    </ul>
+  </section>
+</div>
+
+<footer style="max-width:920px;margin:28px auto 0;color:var(--ink-soft);font-size:13px">Monster Band is built on Chrome Music Lab’s Rhythm (Google Creative Lab, Apache License 2.0). Hand Band uses MediaPipe hand tracking (Google, Apache License 2.0).</footer>
+</body>
+</html>
