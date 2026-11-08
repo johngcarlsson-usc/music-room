@@ -429,10 +429,15 @@ function stepFall(t,dt){
 
 /* ---------- main loop ---------- */
 let lm=null,makeTracker,detN=0,lastDet=0,lastVT=-1,lastFrame=0,showStats=false;
+/* Phones have no D key, so #debug in the address shows the tracking stats too. */
+addEventListener('load',()=>{if(location.hash==='#debug'){showStats=true;$('stats').hidden=false}});
 function detect(t){
   if(!lm||video.readyState<2||video.currentTime===lastVT||t-lastDet<Math.max(28,detMs*1.6))return;
   lastDet=t;lastVT=video.currentTime;
-  const a=performance.now(),res=lm.detectForVideo(video,t);detMs+=(performance.now()-a-detMs)*.1;
+  let res;const a=performance.now();
+  try{res=lm.detectForVideo(video,t)}catch(e){console.warn('Tracking failed',e);if(lm.__delegate==='GPU')useCPU();return}
+  detMs+=(performance.now()-a-detMs)*.1;
+  if(res.landmarks?.length)lm.__found=true;
   const vw=video.videoWidth,vh=video.videoHeight,s=Math.max(W/vw,H/vh),dw=vw*s,dh=vh*s,ox=(W-dw)/2,oy=(H-dh)/2;
   const pts=(res.landmarks||[]).map(L=>{
     const idx=[0,5,9,13,17];let x=0,y=0;
@@ -442,11 +447,16 @@ function detect(t){
     return{x,y,r:Math.max(24,Math.min(80,span*.6))};
   });
   feedHands(pts,t,Math.min(W,H)*.4);
-  /* A computer without a usable graphics chip runs GPU mode in slow motion. Switch once if that happens. */
-  if(lm.__delegate==='GPU'&&++detN===15&&detMs>110){
-    const old=lm;lm=null;detMs=0;
-    makeTracker('CPU').then(n=>{n.__delegate='CPU';lm=n;old.close()});
-  }
+  /* GPU mode can let us down two ways, so switch to CPU once if either happens:
+     a computer without a usable graphics chip runs it in slow motion, and some phones run it
+     without error but never find a hand. CPU mode works everywhere. */
+  if(lm.__delegate==='GPU'&&(++detN>=15&&detMs>110||!lm.__found&&t-lm.__since>GPU_PROOF))useCPU();
+}
+const GPU_PROOF=5000;
+function useCPU(){
+  const old=lm;lm=null;detMs=0;detN=0;lastVT=-1;
+  makeTracker('CPU').then(n=>{n.__delegate='CPU';lm=n;try{old.close()}catch{}})
+    .catch(e=>{console.error(e);status('Hand tracking did not load: '+e.message,true)});
 }
 function frame(t){
   const dt=Math.min(.05,(t-lastFrame)/1000);lastFrame=t;
@@ -476,7 +486,7 @@ async function loadTracker(){
   const make=makeTracker=delegate=>HandLandmarker.createFromOptions(fileset,{
     baseOptions:{modelAssetBuffer:new Uint8Array(m.buf),delegate},runningMode:'VIDEO',numHands:2,
     minHandDetectionConfidence:.45,minHandPresenceConfidence:.45,minTrackingConfidence:.45});
-  try{if(location.hash==='#cpu')throw Error('CPU requested');lm=await make('GPU');lm.__delegate='GPU'}
+  try{if(location.hash==='#cpu')throw Error('CPU requested');lm=await make('GPU');lm.__delegate='GPU';lm.__since=performance.now()}
   catch(e){console.warn('GPU tracking unavailable',e);lm=await make('CPU');lm.__delegate='CPU'}
 }
 function cameraMessage(e){
