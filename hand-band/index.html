@@ -368,8 +368,15 @@ function layout(){
     const th=Math.PI*(1-i/(N-1||1));
     return{i,m:q.m,n:q.n,label:q.label,x:cx+rx*Math.cos(th),y:cy-ry*Math.sin(th),r,latch:same?pads[i].latch:newLatch(),voice:same?pads[i].voice:null,pop:0};
   });
+  sus.x=cx;sus.y=H*.8;sus.r=Math.min(W*.064,H*.105)*1.05;
   if(state.mode==='fall')layoutLanes();
 }
+/* The Sustain circle works like a piano's sustain pedal, for Organ and Strings.
+   While a hand rests on it, notes keep ringing after the other hand moves on, so a chord
+   can be built one note at a time. Taking the hand off Sustain lets them all go. */
+const sus={x:0,y:0,r:0,latch:newLatch(),pop:0};
+const susShown=()=>state.mode==='arch'&&!!HOLD[state.sound];
+function letGo(){for(const p of pads)if(p.voice&&!p.latch.on){p.voice();p.voice=null}}
 function layoutLanes(){
   const s=curSong(),n=s.lanes.length,m=W*.13;
   const gap=n>1?(W-2*m)/(n-1):0,r=Math.min(gap*.42||H*.1,H*.105);
@@ -382,7 +389,7 @@ function disc(x,y,r,fill,ink,text,pop=0,alpha=1){
   if(pop>0){g.beginPath();g.arc(x,y,R*(1.05+(1-pop)*.5),0,7);g.strokeStyle=fill;g.lineWidth=6*pop;g.stroke()}
   g.beginPath();g.arc(x,y,R,0,7);g.fillStyle=fill;g.fill();
   g.lineWidth=4;g.strokeStyle='rgba(255,255,255,.85)';g.stroke();
-  if(text){g.fillStyle=ink;g.font=`700 ${Math.round(r*(text.length>1?.5:.95))}px Fredoka,sans-serif`;g.textAlign='center';g.textBaseline='middle';g.fillText(text,x,y+r*.04)}
+  if(text){g.fillStyle=ink;g.font=`700 ${Math.round(r*(text.length>6?.34:text.length>1?.5:.95))}px Fredoka,sans-serif`;g.textAlign='center';g.textBaseline='middle';g.fillText(text,x,y+r*.04)}
   g.globalAlpha=1;
 }
 function burst(x,y,c){
@@ -426,9 +433,18 @@ function stepArch(t,dt){
       else if(HOLD[state.sound]){if(p.voice)p.voice();p.voice=holdVoice(p.m,state.sound)}
       else playNote(p.m,state.sound);
       burst(p.x,p.y,state.sound==='drums'?DRUM_COL[p.i]:COLOR[p.n]);
-    }else if(ev==='exit'&&p.voice){p.voice();p.voice=null}
+    }else if(ev==='exit'&&p.voice&&!sus.latch.on){p.voice();p.voice=null}
     p.pop=Math.max(p.voice?.45:0,p.pop-dt*3.5);
   }
+  if(susShown()){
+    const ev=updateLatch(sus.latch,sus.x,sus.y,sus.r,t);
+    if(ev==='enter')sus.pop=1;
+    if(ev==='exit')letGo();
+    sus.pop=Math.max(sus.latch.on?.35:0,sus.pop-dt*3.5);
+    const on=sus.latch.on,held=pads.filter(p=>p.voice).length;
+    disc(sus.x,sus.y,sus.r,on?'#ffd23f':'rgba(255,250,240,.16)',on?'#14112b':'#fffaf0','Sustain',sus.pop,on?1:.9);
+    if(on&&held){g.font=`700 ${Math.round(sus.r*.32)}px Fredoka,sans-serif`;g.fillStyle='#fffaf0';g.textAlign='center';g.textBaseline='top';g.fillText(held===1?'1 note ringing':held+' notes ringing',sus.x,sus.y+sus.r*1.25)}
+  }else if(sus.latch.on){sus.latch=newLatch();letGo()}
   for(const p of pads){
     const dr=state.sound==='drums';
     disc(p.x,p.y,p.r,dr?DRUM_COL[p.i]:COLOR[p.n],dr?(['#fff'][[0,5,7].indexOf(p.i)>=0?0:1]||'#14112b'):LABEL_INK[p.n],dr?DRUMS[p.i]:p.label,p.pop,p.latch.on?1:.86);
@@ -776,7 +792,7 @@ $('wait').onchange=e=>{state.wait=e.target.value==='wait';resetFall()};
 $('fs').onclick=()=>document.fullscreenElement?document.exitFullscreen():document.documentElement.requestFullscreen().catch(()=>{});
 
 resize();requestAnimationFrame(frame);
-window.__hb={releaseAll,get settings(){return settings},get mine(){return mine},allSongs,get fires(){return fires},feedHands,liveHands,state,PARSED,get pads(){return pads},get lanes(){return lanes},get fall(){return fall},setMode,get lm(){return trk},parseSong,get detMs(){return detMs}};
+window.__hb={sus,get settings(){return settings},get mine(){return mine},allSongs,get fires(){return fires},feedHands,liveHands,state,PARSED,get pads(){return pads},get lanes(){return lanes},get fall(){return fall},setMode,get lm(){return trk},parseSong,get detMs(){return detMs}};
 </script>
 </body>
 </html>
