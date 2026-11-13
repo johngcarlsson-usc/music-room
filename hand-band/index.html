@@ -27,6 +27,8 @@ video{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
 .seg button:focus-visible,select:focus-visible,#fs:focus-visible,#start:focus-visible{outline:3px solid #fff;outline-offset:-3px}
 label{display:flex;gap:6px;align-items:center;font-size:15px;color:var(--muted)}
 select{font:inherit;color:var(--paper);background:#2a2548;border:1px solid var(--line);border-radius:8px;padding:7px 8px}
+#scale-own{font:16px ui-monospace,Consolas,monospace;color:var(--paper);background:#2a2548;border:1px solid var(--line);border-radius:8px;padding:7px 8px;width:15em}
+#scale-own.bad{border-color:#ffb4a8;box-shadow:0 0 0 2px #ffb4a8}
 #fs,#open-ed{all:unset;cursor:pointer;padding:8px 12px;border:1px solid var(--line);border-radius:10px;font-size:15px}
 [hidden]{display:none!important}
 #front{position:fixed;inset:0;display:grid;place-items:center;padding:24px;z-index:10;
@@ -67,8 +69,12 @@ h1 span:nth-child(5){color:#22b8cf}h1 span:nth-child(6){color:#9a7dff}h1 span:nt
     <button id="m-fall" aria-pressed="false">Falling notes</button>
   </div>
   <label id="l-sound">Sound
-    <select id="sound"><option value="marimba">Marimba</option><option value="bells">Bells</option><option value="drums">Drums</option></select>
+    <select id="sound"><option value="marimba">Marimba</option><option value="bells">Bells</option><option value="organ">Organ (holds)</option><option value="strings">Strings (holds)</option><option value="drums">Drums</option></select>
   </label>
+  <label id="l-scale">Notes
+    <select id="scale"><option value="pent">Pentatonic</option><option value="major">Major</option><option value="minor">Minor</option><option value="chrom">Chromatic</option><option value="custom">My own…</option></select>
+  </label>
+  <input id="scale-own" type="text" hidden spellcheck="false" autocomplete="off" placeholder="C4 D E G A C5" aria-label="Your own notes, low to high" title="Type notes low to high, like C4 D E G A C5. Use # or b for sharps and flats. Press Enter.">
   <label id="l-song" hidden>Song <select id="song"></select></label>
   <label id="l-speed" hidden>Speed
     <select id="speed"><option value="60">Slow</option><option value="84" selected>Medium</option><option value="108">Fast</option></select>
@@ -178,6 +184,32 @@ function saveMine(){
 loadMine();
 const allSongs=()=>[...PARSED,...mine],curSong=()=>allSongs()[state.song];
 const ARCH=[['C',4],['D',4],['E',4],['G',4],['A',4],['C',5],['D',5],['E',5]];
+/* Scales for the Rainbow, low to high from middle C. "My own" takes typed notes. */
+const SCALES={pent:[0,2,4,7,9,12,14,16],major:[0,2,4,5,7,9,11,12],minor:[0,2,3,5,7,8,10,12],chrom:[0,1,2,3,4,5,6,7,8,9,10,11,12]};
+const SHARP=['C','C♯','D','D♯','E','F','F♯','G','G♯','A','A♯','B'],FLAT=['C','D♭','D','E♭','E','F','G♭','G','A♭','A','B♭','B'];
+const LETTER=['C','C','D','D','E','F','F','G','G','A','A','B'],LETTER_FLAT=['C','D','D','E','E','F','G','G','A','A','B','B'];
+function noteInfo(m,flats){const pc=((m%12)+12)%12;return{m,n:(flats?LETTER_FLAT:LETTER)[pc],label:(flats?FLAT:SHARP)[pc]}}
+function parseOwn(txt){
+  let oct=4;const out=[],bad=[];
+  for(const tok of txt.split(/[\s,|]+/).filter(Boolean)){
+    const m=tok.match(/^([A-Ga-g])([#b♯♭]?)(\d?)$/);if(!m){bad.push(tok);continue}
+    if(m[3])oct=+m[3];
+    const acc=m[2]==='#'||m[2]==='♯'?1:m[2]==='b'||m[2]==='♭'?-1:0,flat=acc<0;
+    const mm=12*(oct+1)+{C:0,D:2,E:4,F:5,G:7,A:9,B:11}[m[1].toUpperCase()]+acc;
+    if(!out.some(o=>o.m===mm))out.push(noteInfo(mm,flat));
+  }
+  out.sort((a,b)=>a.m-b.m);
+  return{notes:out,err:bad.length?`I can't read: ${bad.slice(0,4).join(' ')}`:out.length<2?'Type at least 2 notes.':out.length>13?'Use 13 notes or fewer.':''};
+}
+const SET_KEY='hand-band-settings';
+let settings={sound:'marimba',scale:'pent',own:'C4 D E G A C5'};
+try{Object.assign(settings,JSON.parse(localStorage.getItem(SET_KEY)||'{}'))}catch(e){}
+const saveSettings=()=>{try{localStorage.setItem(SET_KEY,JSON.stringify(settings))}catch(e){}};
+function scaleNotes(){
+  if(settings.scale==='custom'){const p=parseOwn(settings.own);if(!p.err)return p.notes}
+  const steps=SCALES[settings.scale]||SCALES.pent;
+  return steps.map(k=>noteInfo(60+k,settings.scale==='minor'));
+}
 const DRUMS=['Kick','Hat','Snare','Clap','Tom','Bell','Shaker','Boom'];
 const DRUM_COL=['#e8433f','#f58a2c','#f7d038','#3fb950','#22b8cf','#8f6fff','#ff6fb5','#e8433f'];
 
@@ -217,6 +249,38 @@ function playDrum(i){
   else if(i===4){const o=tone(200,'sine',.65,.002,.3);o.frequency.setValueAtTime(200,t);o.frequency.exponentialRampToValueAtTime(95,t+.2)}
   else if(i===5){tone(587,'square',.1,.001,.3);tone(845,'square',.1,.001,.3)}
   else if(i===6){noise(.16,.04,'highpass',5000);noise(.13,.11,'highpass',5000,t+.07)}
+}
+/* Organ and Strings hold for as long as a hand stays on the circle, so chords can ring together.
+   holdVoice starts a note and returns a stop function. */
+const HOLD={organ:1,strings:1};
+function holdVoice(m,kind,dest=out,when){
+  const t=when??ac.currentTime,f=hz(m),g=ac.createGain(),lp=ac.createBiquadFilter(),oscs=[];
+  lp.connect(g);g.connect(dest);
+  const add=(type,freq,amp,cents=0)=>{const o=ac.createOscillator(),og=ac.createGain();o.type=type;o.frequency.value=freq;o.detune.value=cents;og.gain.value=amp;o.connect(og).connect(lp);oscs.push(o);return o};
+  let peak,attack;
+  if(kind==='organ'){
+    lp.type='lowpass';lp.frequency.value=5000;peak=.32;attack=.015;
+    [[1,.5],[2,.32],[3,.16],[4,.12],[.5,.22],[6,.05]].forEach(([k,a])=>add('sine',f*k,a));
+  }else{
+    lp.type='lowpass';lp.frequency.value=Math.min(5200,f*7);lp.Q.value=.6;peak=.2;attack=.22;
+    const lfo=ac.createOscillator(),lg=ac.createGain();lfo.frequency.value=5.3;lg.gain.value=f*.005;lfo.connect(lg);
+    [-8,0,8].forEach(c=>{const o=add('sawtooth',f,.33,c);lg.connect(o.frequency)});
+    add('triangle',f/2,.12);
+    lfo.start(t+.3);oscs.push(lfo);
+  }
+  g.gain.setValueAtTime(.0001,t);g.gain.linearRampToValueAtTime(peak,t+attack);
+  oscs.forEach(o=>{if(o.start&&!o.__s){try{o.start(t)}catch(e){}}});
+  let stopped=false;
+  return at=>{
+    if(stopped)return;stopped=true;
+    const s=Math.max(at??ac.currentTime,t+attack),rel=kind==='organ'?.12:.45;
+    g.gain.cancelScheduledValues(s);g.gain.setValueAtTime(peak,s);g.gain.setTargetAtTime(.0001,s,rel/3);
+    oscs.forEach(o=>{try{o.stop(s+rel*2.5)}catch(e){}});
+  };
+}
+function playFor(m,kind,when,dur,dest){
+  if(HOLD[kind]){const t=when??ac.currentTime;holdVoice(m,kind,dest,t)(t+Math.max(.25,dur*.9))}
+  else playNote(m,kind==='drums'?'marimba':kind,when,dest);
 }
 const tick=(when)=>tone(1500,'sine',.1,.001,.04,when);
 const bass=(root,when)=>tone(hz(midi(root,3)),'triangle',.34,.01,.75,when);
@@ -293,13 +357,16 @@ const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
 function resize(){
   const r=Math.min(devicePixelRatio||1,1.5);W=innerWidth;H=innerHeight;cv.width=W*r;cv.height=H*r;g.setTransform(r,0,0,r,0,0);layout();
 }
-const state={mode:'arch',sound:'marimba',song:4,bpm:84,wait:true};
+const state={mode:'arch',sound:settings.sound,song:4,bpm:84,wait:true};
 let pads=[],lanes=[],fall={phase:'ready'},goLatch=newLatch(),goSince=0,sparks=[],noHandSince=0;
 function layout(){
-  const cx=W/2,cy=H*.74,rx=W*.4,ry=H*.6,r=Math.min(W*.064,H*.105);
-  pads=ARCH.map(([n,o],i)=>{
-    const th=Math.PI*(1-i/7);
-    return{i,n,o,x:cx+rx*Math.cos(th),y:cy-ry*Math.sin(th),r,latch:pads[i]?.latch??newLatch(),pop:0};
+  const list=state.sound==='drums'?ARCH.map(([n,o])=>({m:midi(n,o),n,label:n})):scaleNotes(),N=list.length;
+  const same=pads.length===N;
+  if(!same)releaseAll();
+  const cx=W/2,cy=H*.74,rx=W*.4,ry=H*.6,r=Math.min(W*.064,H*.105)*Math.min(1,8.6/N);
+  pads=list.map((q,i)=>{
+    const th=Math.PI*(1-i/(N-1||1));
+    return{i,m:q.m,n:q.n,label:q.label,x:cx+rx*Math.cos(th),y:cy-ry*Math.sin(th),r,latch:same?pads[i].latch:newLatch(),voice:same?pads[i].voice:null,pop:0};
   });
   if(state.mode==='fall')layoutLanes();
 }
@@ -308,6 +375,7 @@ function layoutLanes(){
   const gap=n>1?(W-2*m)/(n-1):0,r=Math.min(gap*.42||H*.1,H*.105);
   lanes=s.lanes.map((nn,i)=>({...nn,x:n>1?m+i*gap:W/2,y:H*.62,r,latch:lanes[i]?.latch??newLatch(),pop:0}));
 }
+function releaseAll(){for(const p of pads){if(p.voice){p.voice();p.voice=null}}}
 function disc(x,y,r,fill,ink,text,pop=0,alpha=1){
   const R=r*(1+pop*.18);
   g.globalAlpha=alpha;
@@ -351,16 +419,19 @@ function caption(text,y,size=34){
 /* ---------- Rainbow arch ---------- */
 function stepArch(t,dt){
   for(const p of pads){
-    if(updateLatch(p.latch,p.x,p.y,p.r,t)==='enter'){
+    const ev=updateLatch(p.latch,p.x,p.y,p.r,t);
+    if(ev==='enter'){
       p.pop=1;fires++;
-      if(state.sound==='drums')playDrum(p.i);else playNote(midi(p.n,p.o),state.sound);
+      if(state.sound==='drums')playDrum(p.i);
+      else if(HOLD[state.sound]){if(p.voice)p.voice();p.voice=holdVoice(p.m,state.sound)}
+      else playNote(p.m,state.sound);
       burst(p.x,p.y,state.sound==='drums'?DRUM_COL[p.i]:COLOR[p.n]);
-    }
-    p.pop=Math.max(0,p.pop-dt*3.5);
+    }else if(ev==='exit'&&p.voice){p.voice();p.voice=null}
+    p.pop=Math.max(p.voice?.45:0,p.pop-dt*3.5);
   }
   for(const p of pads){
     const dr=state.sound==='drums';
-    disc(p.x,p.y,p.r,dr?DRUM_COL[p.i]:COLOR[p.n],dr?(['#fff'][[0,5,7].indexOf(p.i)>=0?0:1]||'#14112b'):LABEL_INK[p.n],dr?DRUMS[p.i]:p.n,p.pop,p.latch.on?1:.86);
+    disc(p.x,p.y,p.r,dr?DRUM_COL[p.i]:COLOR[p.n],dr?(['#fff'][[0,5,7].indexOf(p.i)>=0?0:1]||'#14112b'):LABEL_INK[p.n],dr?DRUMS[p.i]:p.label,p.pop,p.latch.on?1:.86);
   }
 }
 
@@ -373,7 +444,7 @@ function startSong(){
 }
 function hitNote(n,lane){
   n.done=true;n.ok=true;fall.hit++;lane.pop=1;fires++;
-  playNote(n.m,state.sound==='drums'?'marimba':state.sound);
+  playFor(n.m,state.sound,undefined,n.dur*60/state.bpm);
   burst(lane.x,lane.y,COLOR[n.n]);
   if(state.wait&&n.beat%4===0&&fall.song.chordList[n.beat/4])bass(fall.song.chordList[n.beat/4]);
 }
@@ -584,7 +655,7 @@ $('start').onclick=async()=>{
 
 /* ---------- teacher controls ---------- */
 let awayT;
-function wake(){$('bar').classList.remove('away');clearTimeout(awayT);awayT=setTimeout(()=>$('bar').classList.add('away'),3500)}
+function wake(){$('bar').classList.remove('away');clearTimeout(awayT);awayT=setTimeout(function hide(){if($('bar').contains(document.activeElement)&&document.activeElement!==document.body){awayT=setTimeout(hide,1500);return}$('bar').classList.add('away')},3500)}
 addEventListener('mousemove',wake);addEventListener('keydown',e=>{
   if(e.key==='Escape'&&!$('editor').hidden){closeEditor();return}
   if(e.target.matches('input,textarea,select')||e.ctrlKey||e.metaKey||e.altKey||!$('front').hidden)return;
@@ -596,12 +667,26 @@ addEventListener('resize',resize);
 function setMode(m){
   state.mode=m;$('m-arch').setAttribute('aria-pressed',m==='arch');$('m-fall').setAttribute('aria-pressed',m==='fall');
   $('l-song').hidden=$('l-speed').hidden=$('l-wait').hidden=m==='arch';
+  releaseAll();showScaleUI();
   [...$('sound').options].find(o=>o.value==='drums').hidden=m==='fall';
-  if(m==='fall'&&state.sound==='drums'){state.sound=$('sound').value='marimba'}
+  if(m==='fall'&&state.sound==='drums'){state.sound=settings.sound=$('sound').value='marimba';saveSettings()}
   if(m==='fall')resetFall();
 }
 $('m-arch').onclick=()=>setMode('arch');$('m-fall').onclick=()=>setMode('fall');
-$('sound').onchange=e=>state.sound=e.target.value;
+function showScaleUI(){
+  const off=state.mode!=='arch'||state.sound==='drums';
+  $('l-scale').hidden=off;$('scale-own').hidden=off||settings.scale!=='custom';
+}
+function checkOwn(){
+  const p=parseOwn($('scale-own').value);$('scale-own').classList.toggle('bad',!!p.err);
+  $('scale-own').title=p.err||'Type notes low to high, like C4 D E G A C5. Use # or b for sharps and flats.';return p;
+}
+$('sound').value=state.sound;$('scale').value=settings.scale;$('scale-own').value=settings.own;showScaleUI();
+$('sound').onchange=e=>{releaseAll();state.sound=settings.sound=e.target.value;saveSettings();showScaleUI();layout();e.target.blur()};
+$('scale').onchange=e=>{settings.scale=e.target.value;saveSettings();showScaleUI();releaseAll();pads=[];layout();
+  if(settings.scale==='custom'){$('scale-own').focus();$('scale-own').select()}else e.target.blur()};
+$('scale-own').oninput=()=>{const p=checkOwn();if(!p.err){settings.own=$('scale-own').value;saveSettings();releaseAll();pads=[];layout()}};
+$('scale-own').onkeydown=e=>{if(e.key==='Enter'||e.key==='Escape')e.target.blur()};
 function fillSongs(){
   const sel=$('song');sel.textContent='';
   PARSED.forEach((p,i)=>sel.add(new Option(p.name,i)));
@@ -634,7 +719,7 @@ $('ed-test').onclick=()=>{
   const p=liveCheck();if(!p){if(!$('ed-notes').value.trim())edMsg('Add at least one note.','err');return}
   testBus=ac.createGain();testBus.connect(out);const bus=testBus;
   const sb=60/state.bpm,t0=ac.currentTime+.08;
-  p.notes.forEach(n=>playNote(n.m,'marimba',t0+n.beat*sb,bus));
+  p.notes.forEach(n=>playFor(n.m,state.sound,t0+n.beat*sb,n.dur*sb,bus));
   $('ed-test').textContent='Stop';
   setTimeout(()=>{if(testBus===bus)stopTest()},(p.beats*sb+1)*1000);
 };
@@ -691,7 +776,7 @@ $('wait').onchange=e=>{state.wait=e.target.value==='wait';resetFall()};
 $('fs').onclick=()=>document.fullscreenElement?document.exitFullscreen():document.documentElement.requestFullscreen().catch(()=>{});
 
 resize();requestAnimationFrame(frame);
-window.__hb={get mine(){return mine},allSongs,get fires(){return fires},feedHands,liveHands,state,PARSED,get pads(){return pads},get lanes(){return lanes},get fall(){return fall},setMode,get lm(){return trk},parseSong,get detMs(){return detMs}};
+window.__hb={releaseAll,get settings(){return settings},get mine(){return mine},allSongs,get fires(){return fires},feedHands,liveHands,state,PARSED,get pads(){return pads},get lanes(){return lanes},get fall(){return fall},setMode,get lm(){return trk},parseSong,get detMs(){return detMs}};
 </script>
 </body>
 </html>
